@@ -1,3 +1,7 @@
+server:
+  # 環境変数 ACCOUNTING_PORT で変えられる
+  port: ${ACCOUNTING_PORT:80}
+
 spring:
   application:
     name: accounting-app

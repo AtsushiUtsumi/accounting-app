@@ -16,6 +16,17 @@
 
 ## 起動
 
+Windows では `run.bat` を実行する(Docker Desktop を起動しておくこと)。
+`compose.yaml` の PostgreSQL をポート 15432 で起動してから、アプリを http://localhost/ (ポート 80)で起動する。
+ポート 80 がほかのプログラム(別プロジェクトの nginx など)に使われていると、run.bat はメッセージを出して止まる。
+そのときは、そのプログラムを止めるか、`set ACCOUNTING_PORT=8080 & run.bat` のように別のポートで起動する。
+止めるときは Ctrl+C。PostgreSQL のコンテナは `docker compose down` で止める(データはボリュームに残る)。
+
+起動したら、ブラウザで http://localhost/ を開く(ログイン画面が出る)。
+画面はアプリに同梱した静的ファイル(`src/main/resources/static`)で、データはすべて REST API から取得する。
+
+ほかの DB を使うときは、環境変数で接続先を指定して起動する。
+
 ```
 ACCOUNTING_DB_URL=jdbc:postgresql://localhost:5432/accounting \
 ACCOUNTING_DB_USER=accounting ACCOUNTING_DB_PASSWORD=accounting \
@@ -28,13 +39,13 @@ ACCOUNTING_DB_USER=accounting ACCOUNTING_DB_PASSWORD=accounting \
 ```
 # 会社の初期化(承認者)
 curl -u approver:approver -H 'Content-Type: application/json' \
-     -d '{"firstPeriodStart":"2026-04-01"}' localhost:8080/company
+     -d '{"firstPeriodStart":"2026-04-01"}' localhost/company
 
 # 記帳(記帳者)
 curl -u bookkeeper:bookkeeper -H 'Content-Type: application/json' \
      -d '{"date":"2026-04-01","description":"出資による開業","lines":[
           {"accountCode":"101","side":"DEBIT","amount":600000},
-          {"accountCode":"301","side":"CREDIT","amount":600000}]}' localhost:8080/journals
+          {"accountCode":"301","side":"CREDIT","amount":600000}]}' localhost/journals
 ```
 
 ## 運用上の注意
