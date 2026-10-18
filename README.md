@@ -48,6 +48,38 @@ curl -u bookkeeper:bookkeeper -H 'Content-Type: application/json' \
           {"accountCode":"301","side":"CREDIT","amount":600000}]}' localhost/journals
 ```
 
+## 本番(GHCR のイメージで起動)
+
+アプリのイメージは `ghcr.io/atsushiutsumi/accounting-app` に置く。タグは `latest` と、コミットの短いハッシュ。
+
+### イメージを作って push する
+
+アプリは `../accounting-domain` を composite build で取り込むため、Docker の中では Gradle を動かさない。
+先に jar を作り、Dockerfile はその jar をコピーするだけにしている。
+
+- **GitHub Actions**(`.github/workflows/image.yml`): `main` への push、`v*` のタグ、手動実行で、
+  テスト → jar → イメージ(linux/amd64 と linux/arm64)→ push を行う。accounting-domain も並べて checkout する。
+- **手元から**: `build-image.bat`(テスト → jar → イメージ → push)。先に `docker login ghcr.io -u AtsushiUtsumi`
+  (パスワードは `write:packages` 権限のトークン)を実行しておく。コミットしていない変更があると止まる。
+  `build-image.bat --local` なら push せず、手元に `:local` のタグで作る。
+
+最初に push したイメージは非公開になる。本番サーバーで `docker login ghcr.io`(`read:packages` 権限のトークン)
+をするか、GitHub のパッケージの設定で公開にする。
+
+### 本番サーバーで起動する
+
+本番サーバーに `compose.prod.yaml`・`run-prod.sh`・`.env.example` を置いて、次を実行する。
+
+```
+cp .env.example .env    # 値を書き換える(パスワードの作り方は .env.example に書いてある)
+./run-prod.sh           # イメージを pull し、このアプリのコンテナだけを入れ替える
+```
+
+- コンテナの中のアプリは 8080 番で待ち受け(root 以外のユーザーで動かすため)、外からは `ACCOUNTING_HTTP_PORT`(既定 80)で受ける。
+- 本番では `prod` プロファイルで動き、`application.yml` の開発用ユーザーは使われない。ユーザーは `.env` で与える。
+- DB は外部に公開しない。データはボリューム `accounting-app-prod_accounting-data` に残る。
+- 特定の版に戻すときは、`.env` の `ACCOUNTING_IMAGE_TAG` をコミットのハッシュにして `./run-prod.sh` を実行する。
+
 ## 運用上の注意
 
 - 仕訳(journal / journal_line)は追記のみ。DB のトリガーで UPDATE / DELETE を拒否している。

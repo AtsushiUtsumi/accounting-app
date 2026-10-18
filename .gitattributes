@@ -1,0 +1,6 @@
+# Linux で実行するスクリプトは、Windows でチェックアウトしても LF のままにする
+*.sh    text eol=lf
+gradlew text eol=lf
+
+# Windows のバッチは CRLF
+*.bat   text eol=crlf

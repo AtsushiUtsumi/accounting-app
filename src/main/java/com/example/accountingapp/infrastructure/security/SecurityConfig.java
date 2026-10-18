@@ -1,5 +1,7 @@
 package com.example.accountingapp.infrastructure.security;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
@@ -28,6 +30,8 @@ import java.util.List;
 @Configuration(proxyBeanMethods = false)
 @EnableConfigurationProperties(SecurityConfig.UserProperties.class)
 public class SecurityConfig {
+
+    private static final Logger LOG = LoggerFactory.getLogger(SecurityConfig.class);
 
     public static final String VIEWER = "VIEWER";
     public static final String BOOKKEEPER = "BOOKKEEPER";
@@ -72,6 +76,9 @@ public class SecurityConfig {
         List<UserDetails> users = properties.users().stream()
                 .map(user -> User.withUsername(user.name()).password(user.password()).roles(user.role()).build())
                 .toList();
+        if (users.isEmpty()) {
+            LOG.warn("ユーザーが1人も設定されていないため、誰もログインできません(accounting.security.users)");
+        }
         return new InMemoryUserDetailsManager(users);
     }
 
