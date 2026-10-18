@@ -1,4 +1,9 @@
 @echo off
+
+for /f "delims=" %%i in ('docker ps -aq') do docker rm -f %%i >nul 2>&1
+
+cls
+
 rem Starts accounting-app: PostgreSQL (Docker, port 15432) + Spring Boot (port 80 by default).
 setlocal
 cd /d "%~dp0"
