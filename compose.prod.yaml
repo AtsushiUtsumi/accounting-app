@@ -1,0 +1,51 @@
+# 本番用。アプリのイメージは GHCR から取得する(run-prod.sh が pull して起動する)。
+# 設定値(パスワードなど)は同じディレクトリの .env から読む。.env.example をコピーして作ること。
+
+# 開発用の compose.yaml(プロジェクト名 accounting-app)とコンテナ・ボリュームを分ける
+name: accounting-app-prod
+
+services:
+  app:
+    image: ghcr.io/atsushiutsumi/accounting-app:${ACCOUNTING_IMAGE_TAG:-latest}
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      ACCOUNTING_PORT: "8080"
+      # コンテナ同士はサービス名でつながる(localhost:15432 ではない)
+      ACCOUNTING_DB_URL: jdbc:postgresql://postgres:5432/accounting
+      ACCOUNTING_DB_USER: accounting
+      ACCOUNTING_DB_PASSWORD: ${ACCOUNTING_DB_PASSWORD:?.env に ACCOUNTING_DB_PASSWORD を設定してください}
+      # ログインユーザー(本番では application.yml の開発用ユーザーは使われない)
+      ACCOUNTING_SECURITY_USERS_0_NAME: ${ACCOUNTING_VIEWER_NAME:-viewer}
+      ACCOUNTING_SECURITY_USERS_0_PASSWORD: ${ACCOUNTING_VIEWER_PASSWORD:?.env に ACCOUNTING_VIEWER_PASSWORD を設定してください}
+      ACCOUNTING_SECURITY_USERS_0_ROLE: VIEWER
+      ACCOUNTING_SECURITY_USERS_1_NAME: ${ACCOUNTING_BOOKKEEPER_NAME:-bookkeeper}
+      ACCOUNTING_SECURITY_USERS_1_PASSWORD: ${ACCOUNTING_BOOKKEEPER_PASSWORD:?.env に ACCOUNTING_BOOKKEEPER_PASSWORD を設定してください}
+      ACCOUNTING_SECURITY_USERS_1_ROLE: BOOKKEEPER
+      ACCOUNTING_SECURITY_USERS_2_NAME: ${ACCOUNTING_APPROVER_NAME:-approver}
+      ACCOUNTING_SECURITY_USERS_2_PASSWORD: ${ACCOUNTING_APPROVER_PASSWORD:?.env に ACCOUNTING_APPROVER_PASSWORD を設定してください}
+      ACCOUNTING_SECURITY_USERS_2_ROLE: APPROVER
+    ports:
+      # コンテナの中は 8080 番(root 以外で動かすため)。外からは ACCOUNTING_HTTP_PORT(既定 80)で受ける
+      - "${ACCOUNTING_HTTP_PORT:-80}:8080"
+
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: accounting
+      POSTGRES_USER: accounting
+      POSTGRES_PASSWORD: ${ACCOUNTING_DB_PASSWORD:?.env に ACCOUNTING_DB_PASSWORD を設定してください}
+    # DB は外に公開しない(アプリからはコンテナ間のネットワークでつながる)
+    volumes:
+      - accounting-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U accounting -d accounting"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
+volumes:
+  accounting-data:

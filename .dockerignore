@@ -1,0 +1,3 @@
+# イメージに入れるのはビルド済みの jar だけ(Dockerfile を参照)
+*
+!build/libs/accounting-app.jar
