@@ -95,6 +95,19 @@ public class InventoryController {
                               @Positive long salesAmount) {
     }
 
+    /** 売上の返品。{@code unitCost} は払い出したときの単価(商品有高帳の払出欄で確認できる)。 */
+    public record SalesReturnRequest(LocalDate date, @NotBlank String description, @Positive int quantity,
+                                     @Positive long unitCost, @NotBlank String receivableAccountCode,
+                                     @Positive long salesAmount) {
+    }
+
+    @PostMapping("/sales-returns")
+    @ResponseStatus(HttpStatus.CREATED)
+    public IdsResponse salesReturn(@PathVariable String itemCode, @Valid @RequestBody SalesReturnRequest r) {
+        return IdsResponse.of(List.of(useCase.recordSalesReturn(itemCode, today.orToday(r.date()), r.description(),
+                r.quantity(), r.unitCost(), r.receivableAccountCode(), r.salesAmount())));
+    }
+
     @PostMapping("/sales")
     @ResponseStatus(HttpStatus.CREATED)
     public IdsResponse sell(@PathVariable String itemCode, @Valid @RequestBody SaleRequest r) {

@@ -24,6 +24,7 @@ import org.springframework.web.bind.annotation.RestController;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 @RestController
@@ -86,12 +87,15 @@ public class JournalController {
 
     @GetMapping("/journals/{id}")
     public JournalResponse get(@PathVariable UUID id) {
-        return JournalResponse.of(statementQueryService.journal(id));
+        return JournalResponse.of(statementQueryService.journal(id), statementQueryService.isReversed(id));
     }
 
     /** 仕訳帳。 */
     @GetMapping("/periods/{id}/journals")
     public List<JournalResponse> journalsOf(@PathVariable UUID id) {
-        return statementQueryService.journals(id).stream().map(JournalResponse::of).toList();
+        Set<JournalId> reversed = statementQueryService.reversedJournalIds(id);
+        return statementQueryService.journals(id).stream()
+                .map(posted -> JournalResponse.of(posted, reversed.contains(posted.id())))
+                .toList();
     }
 }

@@ -7,7 +7,6 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
 import org.springframework.security.access.hierarchicalroles.RoleHierarchy;
 import org.springframework.security.access.hierarchicalroles.RoleHierarchyImpl;
-import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.core.userdetails.User;
@@ -38,13 +37,17 @@ public class SecurityConfig {
     SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
                 .authorizeHttpRequests(authorize -> authorize
+                        // 画面(静的ファイル)は誰でも取得できる。データはすべて API 側で認可する
+                        .requestMatchers(HttpMethod.GET, "/", "/index.html", "/app/**", "/favicon.ico").permitAll()
                         .requestMatchers(HttpMethod.GET, "/**").hasRole(VIEWER)
                         .requestMatchers(HttpMethod.POST, "/company").hasRole(APPROVER)
                         .requestMatchers(HttpMethod.POST,
                                 "/periods/*/adjustments/preview", "/periods/*/adjustments",
                                 "/periods/*/close", "/periods/*/reversals").hasRole(APPROVER)
                         .anyRequest().hasRole(BOOKKEEPER))
-                .httpBasic(Customizer.withDefaults())
+                // 画面からの呼び出し(X-Requested-With 付き)では、ブラウザの認証ダイアログを出さないよう
+                // WWW-Authenticate を付けずに 401 を返す。画面は自分のログインフォームで認証情報を送る
+                .httpBasic(basic -> basic.authenticationEntryPoint(new ScreenAwareBasicEntryPoint()))
                 // REST API はセッションを使わず、リクエストごとに認証する(CSRF 対策のトークンも不要)
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .csrf(csrf -> csrf.disable());

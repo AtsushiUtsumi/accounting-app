@@ -5,6 +5,8 @@ import com.example.accounting.model.journal.JournalId;
 import com.example.accounting.model.journal.JournalType;
 import com.example.accounting.model.period.AccountingPeriod;
 
+import java.util.Set;
+
 /** 仕訳についての、アプリ都合の問い合わせ(二重実行・二重取消の防止、使用済み科目の判定)。 */
 public interface JournalQuery {
 
@@ -18,6 +20,9 @@ public interface JournalQuery {
 
     /** その仕訳を取り消す仕訳({@code reversalOf} がその仕訳を指すもの)が記帳済みか。 */
     boolean isReversed(JournalId id);
+
+    /** その期に記帳された仕訳のうち、取り消されたもの(取消仕訳はどの期にあってもよい)の ID。仕訳帳の表示用。 */
+    Set<JournalId> findReversedIds(AccountingPeriod period);
 
     /** その科目を使った仕訳が1件でもあるか。 */
     boolean isAccountUsed(AccountCode code);

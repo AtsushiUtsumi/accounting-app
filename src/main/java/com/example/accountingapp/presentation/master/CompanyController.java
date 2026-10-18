@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.time.LocalDate;
+import java.util.List;
 import java.util.UUID;
 
 /** 会社の初期化と、会計期間の照会。 */
@@ -45,6 +46,25 @@ public class CompanyController {
     @ResponseStatus(HttpStatus.CREATED)
     public PeriodResponse setUp(@Valid @RequestBody SetUpRequest request) {
         return PeriodResponse.of(companySetupUseCase.setUp(request.firstPeriodStart()));
+    }
+
+    /** すべての期(期首日の新しい順)。 */
+    @GetMapping("/periods")
+    public List<PeriodResponse> periods() {
+        return queries.periods().stream().map(PeriodResponse::of).toList();
+    }
+
+    /** 決算の進み具合(ホーム画面の表示用)。 */
+    public record ProgressResponse(PeriodResponse period, PeriodResponse previousPeriod, boolean adjustmentsRun,
+                                   boolean accrualsReversed, long cashOverShortBalance, int journalCount) {
+    }
+
+    @GetMapping("/periods/{id}/progress")
+    public ProgressResponse progress(@PathVariable UUID id) {
+        StatementQueryService.Progress p = queries.progress(id);
+        return new ProgressResponse(PeriodResponse.of(p.period()),
+                p.previousPeriod().map(PeriodResponse::of).orElse(null), p.adjustmentsRun(), p.accrualsReversed(),
+                p.cashOverShortBalance().amountInYen(), p.journalCount());
     }
 
     @GetMapping("/periods/latest")

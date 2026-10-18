@@ -46,6 +46,19 @@ public class BankReconciliationUseCase {
     public record Result(BankReconciliation reconciliation, List<JournalId> correctingJournalIds) {
     }
 
+    /** プレビュー。調整表と、記帳される修正仕訳(記帳前)を返す。保存はしない。 */
+    public record Preview(BankReconciliation reconciliation, List<Journal> correctingEntries) {
+    }
+
+    @Transactional(readOnly = true)
+    public Preview preview(LocalDate date, String checkingAccountCode, long bankStatementBalance,
+                           List<ItemCommand> items) {
+        BankReconciliation reconciliation = BankReconciliation.of(
+                accounts.resolve(checkingAccountCode), Money.ofYen(bankStatementBalance),
+                book.journalsOf(book.periodContaining(date)), items.stream().map(this::toItem).toList());
+        return new Preview(reconciliation, reconciliation.correctingEntries(date));
+    }
+
     @Transactional
     public Result reconcile(LocalDate date, String checkingAccountCode, long bankStatementBalance,
                             List<ItemCommand> items) {

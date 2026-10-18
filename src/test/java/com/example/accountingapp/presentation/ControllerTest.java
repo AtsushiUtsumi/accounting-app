@@ -151,6 +151,24 @@ class ControllerTest {
         assertThat(postJournal(SALE)).hasStatus(HttpStatus.UNAUTHORIZED);
     }
 
+    /** 画面(静的ファイル)は認証なしで取得できる。 */
+    @Test
+    void screenIsServedWithoutAuthentication() {
+        assertThat(mvc.get().uri("/index.html")).hasStatus(HttpStatus.OK);
+        assertThat(mvc.get().uri("/app/main.js")).hasStatus(HttpStatus.OK);
+    }
+
+    /** 画面からの呼び出しでは、ブラウザの認証ダイアログが出ないよう WWW-Authenticate を付けない。 */
+    @Test
+    void unauthenticatedScreenRequestHasNoBasicChallenge() {
+        assertThat(mvc.get().uri("/periods").header("X-Requested-With", "XMLHttpRequest"))
+                .hasStatus(HttpStatus.UNAUTHORIZED)
+                .doesNotContainHeader("WWW-Authenticate");
+        assertThat(mvc.get().uri("/periods"))
+                .hasStatus(HttpStatus.UNAUTHORIZED)
+                .containsHeader("WWW-Authenticate");
+    }
+
     @Test
     @WithMockUser(roles = SecurityConfig.VIEWER)
     void viewerCannotPost() {

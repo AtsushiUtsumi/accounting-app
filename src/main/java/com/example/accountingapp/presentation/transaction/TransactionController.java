@@ -9,6 +9,7 @@ import com.example.accountingapp.application.transaction.TransactionUseCase;
 import com.example.accountingapp.presentation.IdsResponse;
 import com.example.accountingapp.presentation.JournalLineRequest;
 import com.example.accountingapp.presentation.Today;
+import com.example.accountingapp.presentation.journal.JournalResponse;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
@@ -135,6 +136,18 @@ public class TransactionController {
                                             @Positive int installmentNumber, @NotBlank String paymentAccountCode) {
     }
 
+    public record InstallmentScheduleRow(int installmentNumber, long payment, long interest) {
+    }
+
+    /** 支払予定表(各回の支払額と利息)。記帳はしない。 */
+    @PostMapping("/transactions/installment-schedules")
+    @ResponseStatus(HttpStatus.OK)
+    public List<InstallmentScheduleRow> installmentSchedule(@Valid @RequestBody InstallmentPlanRequest plan) {
+        return useCase.installmentSchedule(plan.toCommand()).stream()
+                .map(row -> new InstallmentScheduleRow(row.installmentNumber(), yen(row.payment()), yen(row.interest())))
+                .toList();
+    }
+
     @PostMapping("/transactions/installment-payments")
     public IdsResponse payInstallment(@Valid @RequestBody InstallmentPaymentRequest r) {
         return one(useCase.payInstallment(today.orToday(r.date()), r.plan().toCommand(), r.installmentNumber(),
@@ -253,13 +266,33 @@ public class TransactionController {
     @PostMapping("/bank-reconciliations")
     public BankReconciliationResponse reconcile(@Valid @RequestBody BankReconciliationRequest r) {
         BankReconciliationUseCase.Result result = bankReconciliationUseCase.reconcile(
-                today.orToday(r.date()), r.checkingAccountCode(), r.bankStatementBalance(),
-                r.items().stream().map(item -> new BankReconciliationUseCase.ItemCommand(
-                        item.kind(), item.amount(), item.counterAccountCode())).toList());
+                today.orToday(r.date()), r.checkingAccountCode(), r.bankStatementBalance(), toItems(r));
         BankReconciliation rec = result.reconciliation();
         return new BankReconciliationResponse(yen(rec.bankStatementBalance()), yen(rec.bookBalance()),
                 yen(rec.adjustedBankBalance()), yen(rec.adjustedBookBalance()), rec.reconciles(),
                 result.correctingJournalIds().stream().map(JournalId::value).toList());
+    }
+
+    public record BankReconciliationPreviewResponse(long bankStatementBalance, long bookBalance,
+                                                    long adjustedBankBalance, long adjustedBookBalance,
+                                                    boolean reconciles, List<JournalResponse> correctingEntries) {
+    }
+
+    /** 銀行勘定調整表のプレビュー。調整表と、記帳される修正仕訳を返す(記帳はしない)。 */
+    @PostMapping("/bank-reconciliations/preview")
+    @ResponseStatus(HttpStatus.OK)
+    public BankReconciliationPreviewResponse previewReconciliation(@Valid @RequestBody BankReconciliationRequest r) {
+        BankReconciliationUseCase.Preview preview = bankReconciliationUseCase.preview(
+                today.orToday(r.date()), r.checkingAccountCode(), r.bankStatementBalance(), toItems(r));
+        BankReconciliation rec = preview.reconciliation();
+        return new BankReconciliationPreviewResponse(yen(rec.bankStatementBalance()), yen(rec.bookBalance()),
+                yen(rec.adjustedBankBalance()), yen(rec.adjustedBookBalance()), rec.reconciles(),
+                preview.correctingEntries().stream().map(JournalResponse::of).toList());
+    }
+
+    private static List<BankReconciliationUseCase.ItemCommand> toItems(BankReconciliationRequest r) {
+        return r.items().stream().map(item -> new BankReconciliationUseCase.ItemCommand(
+                item.kind(), item.amount(), item.counterAccountCode())).toList();
     }
 
     private static IdsResponse one(JournalId id) {

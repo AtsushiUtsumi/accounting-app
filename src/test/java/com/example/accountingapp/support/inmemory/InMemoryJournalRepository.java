@@ -15,6 +15,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * 仕訳のインメモリ実装。saveAll は全件を検証してから保存する(全件か0件か)。
@@ -86,6 +88,14 @@ public final class InMemoryJournalRepository implements JournalRepository, Journ
     @Override
     public boolean isReversed(JournalId id) {
         return journals.values().stream().anyMatch(stored -> id.equals(stored.journal().journal().reversalOf()));
+    }
+
+    @Override
+    public Set<JournalId> findReversedIds(AccountingPeriod period) {
+        return findByPeriod(period).stream()
+                .map(PostedJournal::id)
+                .filter(this::isReversed)
+                .collect(Collectors.toSet());
     }
 
     @Override

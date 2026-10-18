@@ -2,6 +2,7 @@ package com.example.accountingapp.application.inventory;
 
 import com.example.accounting.model.inventory.FifoInventoryValuationMethod;
 import com.example.accounting.model.inventory.InventoryLedgerEntry;
+import com.example.accounting.model.inventory.InventoryLot;
 import com.example.accounting.model.inventory.InventoryMovement;
 import com.example.accounting.model.inventory.InventoryValuationMethod;
 import com.example.accounting.model.inventory.MovingAverageInventoryValuationMethod;
@@ -75,6 +76,26 @@ public class InventoryUseCase {
             InventoryLedgerEntry issued = recordIssue(itemCode, date, description, quantity, method);
             Journal journal = perpetualInventoryService.recordSale(
                     accounts.resolve(receivableAccountCode), Money.ofYen(salesAmount), issued, date);
+            book.postAndSave(book.periodContaining(date), journal);
+            return journal.id();
+        });
+    }
+
+    /**
+     * 売上原価対立法の売上の返品(戻り)。戻ってきた商品を、払い出したときの単価で商品有高帳に受け入れ、
+     * 売上の取消と、売上原価から商品への振替の仕訳を同じトランザクションで記帳する。
+     * 戻った商品の原価(数量 × 単価)はライブラリの {@link InventoryLot#amount()} で求める。
+     */
+    @Transactional
+    public JournalId recordSalesReturn(String itemCode, LocalDate date, String description, int quantity,
+                                       long unitCost, String receivableAccountCode, long salesAmount) {
+        return AuditContext.within(NAME, () -> {
+            InventoryMovement.Receipt returned =
+                    new InventoryMovement.Receipt(date, description, quantity, Money.ofYen(unitCost));
+            movements.append(itemCode, returned);
+            Journal journal = perpetualInventoryService.recordSalesReturn(
+                    accounts.resolve(receivableAccountCode), Money.ofYen(salesAmount),
+                    new InventoryLot(quantity, Money.ofYen(unitCost)).amount(), date);
             book.postAndSave(book.periodContaining(date), journal);
             return journal.id();
         });

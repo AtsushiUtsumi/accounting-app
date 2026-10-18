@@ -32,6 +32,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -233,6 +234,17 @@ public class JdbcJournalRepository implements JournalRepository, JournalQuery {
                 .param(id.value())
                 .query(Boolean.class)
                 .single();
+    }
+
+    @Override
+    public Set<JournalId> findReversedIds(AccountingPeriod period) {
+        return jdbc.sql("""
+                        select j.id from journal j
+                        where j.period_id = ? and exists (select 1 from journal r where r.reversal_of = j.id)
+                        """)
+                .param(period.id().value())
+                .query((rs, n) -> new JournalId(rs.getObject("id", UUID.class)))
+                .set();
     }
 
     @Override

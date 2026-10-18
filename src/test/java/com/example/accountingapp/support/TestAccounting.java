@@ -79,7 +79,7 @@ public final class TestAccounting {
     public final ReverseAccrualsUseCase reverseAccruals =
             new ReverseAccrualsUseCase(book, periods, journals, new AdjustingEntryService());
     public final StatementQueryService statements = new StatementQueryService(
-            book, periods, accountResolver, new FinancialStatementFactory(), new StandardCashFlowClassifier());
+            book, periods, journals, accountResolver, new FinancialStatementFactory(), new StandardCashFlowClassifier());
     public final FixedAssetUseCase fixedAssetUseCase = new FixedAssetUseCase(fixedAssets, fixedAssets, book, accountResolver);
     public final IntangibleAssetUseCase intangibleAssetUseCase =
             new IntangibleAssetUseCase(intangibleAssets, book, accountResolver);

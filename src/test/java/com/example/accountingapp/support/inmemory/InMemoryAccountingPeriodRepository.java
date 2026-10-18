@@ -9,6 +9,7 @@ import com.example.accountingapp.application.port.PeriodLookup;
 import java.time.LocalDate;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
@@ -46,5 +47,10 @@ public final class InMemoryAccountingPeriodRepository implements AccountingPerio
     @Override
     public Optional<AccountingPeriod> findLatest() {
         return periods.values().stream().max(Comparator.comparing(AccountingPeriod::startDate));
+    }
+
+    @Override
+    public List<AccountingPeriod> findAll() {
+        return periods.values().stream().sorted(Comparator.comparing(AccountingPeriod::startDate).reversed()).toList();
     }
 }

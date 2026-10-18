@@ -1,10 +1,12 @@
 package com.example.accountingapp.application.statement;
 
 import com.example.accounting.model.account.Account;
+import com.example.accounting.model.account.StandardAccounts;
 import com.example.accounting.model.journal.Journal;
 import com.example.accounting.model.journal.JournalId;
 import com.example.accounting.model.journal.JournalType;
 import com.example.accounting.model.journal.PostedJournal;
+import com.example.accounting.model.money.Money;
 import com.example.accounting.model.period.AccountingPeriod;
 import com.example.accounting.model.statement.BalanceSheet;
 import com.example.accounting.model.statement.CashFlowClassifier;
@@ -17,11 +19,15 @@ import com.example.accounting.model.statement.Worksheet;
 import com.example.accounting.service.FinancialStatementFactory;
 import com.example.accountingapp.application.AccountResolver;
 import com.example.accountingapp.application.JournalBook;
+import com.example.accountingapp.application.closing.RunAdjustingEntriesUseCase;
+import com.example.accountingapp.application.port.JournalQuery;
 import com.example.accountingapp.application.port.PeriodLookup;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -41,14 +47,17 @@ public class StatementQueryService {
 
     private final JournalBook book;
     private final PeriodLookup periodLookup;
+    private final JournalQuery journalQuery;
     private final AccountResolver accounts;
     private final FinancialStatementFactory statements;
     private final CashFlowClassifier cashFlowClassifier;
 
-    public StatementQueryService(JournalBook book, PeriodLookup periodLookup, AccountResolver accounts,
-                                 FinancialStatementFactory statements, CashFlowClassifier cashFlowClassifier) {
+    public StatementQueryService(JournalBook book, PeriodLookup periodLookup, JournalQuery journalQuery,
+                                 AccountResolver accounts, FinancialStatementFactory statements,
+                                 CashFlowClassifier cashFlowClassifier) {
         this.book = book;
         this.periodLookup = periodLookup;
+        this.journalQuery = journalQuery;
         this.accounts = accounts;
         this.statements = statements;
         this.cashFlowClassifier = cashFlowClassifier;
@@ -64,6 +73,47 @@ public class StatementQueryService {
 
     public PostedJournal journal(UUID journalId) {
         return book.journal(new JournalId(journalId));
+    }
+
+    /** すべての期(期首日の新しい順)。 */
+    public List<AccountingPeriod> periods() {
+        return periodLookup.findAll();
+    }
+
+    public boolean isReversed(UUID journalId) {
+        return journalQuery.isReversed(new JournalId(journalId));
+    }
+
+    /** その期に記帳された仕訳のうち、取り消されたものの ID(仕訳帳の表示用)。 */
+    public Set<JournalId> reversedJournalIds(UUID periodId) {
+        return journalQuery.findReversedIds(book.period(periodId));
+    }
+
+    /**
+     * 決算の進み具合(ホーム画面の表示用)。どれも保存済みの仕訳と期の状態から判定し、会計の計算はしない
+     * (現金過不足の残高はライブラリの {@link Ledger} で求める)。
+     *
+     * @param previousPeriod      前期(ない場合は空)
+     * @param adjustmentsRun      決算整理のユースケースが作った、取り消されていない整理仕訳があるか
+     * @param accrualsReversed    この期に再振替仕訳があるか
+     * @param cashOverShortBalance 現金過不足の残高(締めの前にゼロにする)
+     * @param journalCount        この期に記帳された仕訳の件数
+     */
+    public record Progress(AccountingPeriod period, Optional<AccountingPeriod> previousPeriod, boolean adjustmentsRun,
+                           boolean accrualsReversed, Money cashOverShortBalance, int journalCount) {
+    }
+
+    public Progress progress(UUID periodId) {
+        AccountingPeriod period = book.period(periodId);
+        List<Journal> journals = book.journalsOf(period);
+        return new Progress(
+                period,
+                periodLookup.findPrevious(period),
+                journalQuery.existsUnreversedByPeriodAndTypeAndOrigin(
+                        period, JournalType.ADJUSTING, RunAdjustingEntriesUseCase.NAME),
+                journalQuery.existsByPeriodAndType(period, JournalType.REVERSING),
+                Ledger.of(StandardAccounts.CASH_OVER_SHORT, journals).balance(),
+                journals.size());
     }
 
     /** 仕訳帳。その期に記帳された仕訳。 */

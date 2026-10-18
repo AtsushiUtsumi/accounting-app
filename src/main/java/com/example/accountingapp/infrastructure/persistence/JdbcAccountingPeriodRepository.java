@@ -13,6 +13,7 @@ import org.springframework.stereotype.Repository;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.LocalDate;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -99,6 +100,13 @@ public class JdbcAccountingPeriodRepository implements AccountingPeriodRepositor
         return jdbc.sql("select * from accounting_period order by start_date desc limit 1")
                 .query((rs, n) -> toPeriod(rs))
                 .optional();
+    }
+
+    @Override
+    public List<AccountingPeriod> findAll() {
+        return jdbc.sql("select * from accounting_period order by start_date desc")
+                .query((rs, n) -> toPeriod(rs))
+                .list();
     }
 
     private static AccountingPeriod toPeriod(ResultSet rs) throws SQLException {

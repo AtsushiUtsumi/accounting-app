@@ -31,6 +31,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.Function;
+import java.util.stream.IntStream;
 
 /**
  * 個別取引(CLAUDE.md §6.3)。どれも「期を取得 → journalsSoFar を作る → ドメインサービス → 記帳 → 保存」の形。
@@ -158,6 +159,18 @@ public class TransactionUseCase {
                                     String paymentAccountCode) {
         return record(date, soFar -> installmentPurchaseService.payInstallment(
                 toPlan(plan), installmentNumber, accounts.resolve(paymentAccountCode), date));
+    }
+
+    /** 支払予定表の1行。各回の支払額と利息はライブラリの {@link InstallmentPlan} が決める。 */
+    public record InstallmentScheduleRow(int installmentNumber, Money payment, Money interest) {
+    }
+
+    @Transactional(readOnly = true)
+    public List<InstallmentScheduleRow> installmentSchedule(InstallmentPlanCommand plan) {
+        InstallmentPlan domainPlan = toPlan(plan);
+        return IntStream.rangeClosed(1, domainPlan.numberOfInstallments())
+                .mapToObj(n -> new InstallmentScheduleRow(n, domainPlan.installmentAmount(n), domainPlan.interestFor(n)))
+                .toList();
     }
 
     private InstallmentPlan toPlan(InstallmentPlanCommand plan) {
