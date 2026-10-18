@@ -1,0 +1,25 @@
+spring:
+  application:
+    name: accounting-app
+  datasource:
+    url: ${ACCOUNTING_DB_URL:jdbc:postgresql://localhost:5432/accounting}
+    username: ${ACCOUNTING_DB_USER:accounting}
+    password: ${ACCOUNTING_DB_PASSWORD:accounting}
+  mvc:
+    problemdetails:
+      enabled: true
+
+accounting:
+  security:
+    # パスワードは {bcrypt}... のようにエンコード方式の接頭辞を付ける。
+    # ここにあるのは開発用の初期値なので、本番では環境ごとの設定で上書きすること。
+    users:
+      - name: viewer
+        password: "{noop}viewer"
+        role: VIEWER
+      - name: bookkeeper
+        password: "{noop}bookkeeper"
+        role: BOOKKEEPER
+      - name: approver
+        password: "{noop}approver"
+        role: APPROVER
