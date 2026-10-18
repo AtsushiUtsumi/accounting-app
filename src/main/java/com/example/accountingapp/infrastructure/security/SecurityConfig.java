@@ -9,6 +9,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
 import org.springframework.security.access.hierarchicalroles.RoleHierarchy;
 import org.springframework.security.access.hierarchicalroles.RoleHierarchyImpl;
+import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.core.userdetails.User;
@@ -25,10 +26,14 @@ import java.util.List;
  * 認可(CLAUDE.md §9)。ロールは閲覧者(VIEWER)・記帳者(BOOKKEEPER)・承認者(APPROVER)の3つで、
  * 上位のロールは下位のロールの操作もできる。決算整理・締め・再振替・会社の初期化は承認者だけ。
  *
+ * <p>MCP(AI エージェント向けの {@code /mcp})は1つの URL にすべての操作が来るため、URL では閲覧者以上であることだけを確かめ、
+ * ツールごとのロールはツールのメソッドの {@code @PreAuthorize} で確かめる。
+ *
  * <p>ユーザーは設定ファイル({@code accounting.security.users})から読み込む(最初は単一の会社の小さな運用を想定)。
  */
 @Configuration(proxyBeanMethods = false)
 @EnableConfigurationProperties(SecurityConfig.UserProperties.class)
+@EnableMethodSecurity
 public class SecurityConfig {
 
     private static final Logger LOG = LoggerFactory.getLogger(SecurityConfig.class);
@@ -43,6 +48,8 @@ public class SecurityConfig {
                 .authorizeHttpRequests(authorize -> authorize
                         // 画面(静的ファイル)は誰でも取得できる。データはすべて API 側で認可する
                         .requestMatchers(HttpMethod.GET, "/", "/index.html", "/app/**", "/favicon.ico").permitAll()
+                        // MCP はツールごとに @PreAuthorize で認可する
+                        .requestMatchers("/mcp").hasRole(VIEWER)
                         .requestMatchers(HttpMethod.GET, "/**").hasRole(VIEWER)
                         .requestMatchers(HttpMethod.POST, "/company").hasRole(APPROVER)
                         .requestMatchers(HttpMethod.POST,

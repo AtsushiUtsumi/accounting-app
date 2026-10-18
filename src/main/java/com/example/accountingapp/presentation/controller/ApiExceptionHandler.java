@@ -1,4 +1,4 @@
-package com.example.accountingapp.presentation;
+package com.example.accountingapp.presentation.controller;
 
 import com.example.accounting.exception.AccountingException;
 import com.example.accountingapp.application.ConcurrencyConflictException;

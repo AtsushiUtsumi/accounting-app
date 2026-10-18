@@ -41,12 +41,11 @@ accounting-app/              ← 新規
 
 ```
 com.example.accountingapp
- ├─ presentation          REST コントローラ、リクエスト/レスポンス DTO、例外ハンドラ
- │   ├─ journal
- │   ├─ transaction
- │   ├─ closing
- │   ├─ statement
- │   └─ master
+ ├─ presentation          REST と MCP で共有する DTO(JournalResponse など)、Today
+ │   ├─ controller        REST コントローラ、リクエスト/レスポンス DTO、例外ハンドラ
+ │   │   ├─ journal / transaction / closing / statement / master / asset / inventory
+ │   └─ mcp               AI エージェント向けの MCP ツール(/mcp)。controller と同じ並びで、全エンドポイントに対応するツールを置く
+ │       ├─ journal / transaction / closing / statement / master / asset / inventory
  ├─ application           ユースケース(@Service, @Transactional)とコマンド/結果の型
  │   ├─ port              アプリ都合で追加する検索・保存のインターフェース(§4.2)
  │   ├─ journal           PostJournalUseCase, CorrectJournalUseCase

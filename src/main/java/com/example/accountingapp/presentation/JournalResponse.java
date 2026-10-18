@@ -1,4 +1,4 @@
-package com.example.accountingapp.presentation.journal;
+package com.example.accountingapp.presentation;
 
 import com.example.accounting.model.account.Side;
 import com.example.accounting.model.journal.Journal;

@@ -1,4 +1,4 @@
-package com.example.accountingapp.presentation;
+package com.example.accountingapp.presentation.controller;
 
 import com.example.accounting.exception.AccountingException;
 import com.example.accounting.model.account.Side;
@@ -21,9 +21,10 @@ import com.example.accountingapp.application.journal.PostJournalCommand;
 import com.example.accountingapp.application.journal.PostJournalUseCase;
 import com.example.accountingapp.application.statement.StatementQueryService;
 import com.example.accountingapp.infrastructure.security.SecurityConfig;
-import com.example.accountingapp.presentation.closing.ClosingController;
-import com.example.accountingapp.presentation.journal.JournalController;
-import com.example.accountingapp.presentation.statement.StatementController;
+import com.example.accountingapp.presentation.Today;
+import com.example.accountingapp.presentation.controller.closing.ClosingController;
+import com.example.accountingapp.presentation.controller.journal.JournalController;
+import com.example.accountingapp.presentation.controller.statement.StatementController;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;

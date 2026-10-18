@@ -1,4 +1,4 @@
-package com.example.accountingapp.presentation.master;
+package com.example.accountingapp.presentation.controller.master;
 
 import com.example.accounting.model.period.AccountingPeriod;
 import com.example.accounting.model.period.PeriodStatus;
@@ -57,14 +57,17 @@ public class CompanyController {
     /** 決算の進み具合(ホーム画面の表示用)。 */
     public record ProgressResponse(PeriodResponse period, PeriodResponse previousPeriod, boolean adjustmentsRun,
                                    boolean accrualsReversed, long cashOverShortBalance, int journalCount) {
+
+        public static ProgressResponse of(StatementQueryService.Progress p) {
+            return new ProgressResponse(PeriodResponse.of(p.period()),
+                    p.previousPeriod().map(PeriodResponse::of).orElse(null), p.adjustmentsRun(), p.accrualsReversed(),
+                    p.cashOverShortBalance().amountInYen(), p.journalCount());
+        }
     }
 
     @GetMapping("/periods/{id}/progress")
     public ProgressResponse progress(@PathVariable UUID id) {
-        StatementQueryService.Progress p = queries.progress(id);
-        return new ProgressResponse(PeriodResponse.of(p.period()),
-                p.previousPeriod().map(PeriodResponse::of).orElse(null), p.adjustmentsRun(), p.accrualsReversed(),
-                p.cashOverShortBalance().amountInYen(), p.journalCount());
+        return ProgressResponse.of(queries.progress(id));
     }
 
     @GetMapping("/periods/latest")

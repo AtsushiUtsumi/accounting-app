@@ -48,6 +48,21 @@ curl -u bookkeeper:bookkeeper -H 'Content-Type: application/json' \
           {"accountCode":"301","side":"CREDIT","amount":600000}]}' localhost/journals
 ```
 
+## AI エージェントから使う(MCP)
+
+REST API で公開している機能は、すべて MCP のツールとしても `/mcp`(Streamable HTTP、ステートレス)で公開している
+(`presentation.mcp`。`presentation.controller` と同じ並び)。認証は REST と同じ HTTP Basic で、ツールごとに REST と同じロールが必要になる。
+
+Claude Code から接続する例(承認者として。Basic の値は `user:password` を Base64 にしたもの):
+
+```
+claude mcp add --transport http accounting http://localhost/mcp \
+       --header "Authorization: Basic $(printf approver:approver | base64)"
+```
+
+エラーは、先頭に REST の ProblemDetail と同じ `code` を付けて返す(例: `[ACCOUNTING_RULE_VIOLATION] debit total (50000) must equal credit total (40000)`)。
+ロールが足りないときは `[FORBIDDEN]`。
+
 ## 本番(GHCR のイメージで起動)
 
 アプリのイメージは `ghcr.io/atsushiutsumi/accounting-app` に置く。タグは `latest` と、コミットの短いハッシュ。

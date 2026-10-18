@@ -1,4 +1,4 @@
-package com.example.accountingapp.presentation.inventory;
+package com.example.accountingapp.presentation.controller.inventory;
 
 import com.example.accounting.model.inventory.InventoryLedgerEntry;
 import com.example.accounting.model.inventory.InventoryLot;
@@ -39,7 +39,7 @@ public class InventoryController {
 
     public record LotResponse(int quantity, long unitCost, long amount) {
 
-        static List<LotResponse> listOf(List<InventoryLot> lots) {
+        public static List<LotResponse> listOf(List<InventoryLot> lots) {
             return lots.stream()
                     .map(lot -> new LotResponse(lot.quantity(), lot.unitCost().amountInYen(), lot.amount().amountInYen()))
                     .toList();
@@ -50,7 +50,7 @@ public class InventoryController {
                                       List<LotResponse> issues, List<LotResponse> balance,
                                       int balanceQuantity, long balanceAmount) {
 
-        static LedgerEntryResponse of(InventoryLedgerEntry entry) {
+        public static LedgerEntryResponse of(InventoryLedgerEntry entry) {
             return new LedgerEntryResponse(entry.date(), entry.description(), LotResponse.listOf(entry.receipts()),
                     LotResponse.listOf(entry.issues()), LotResponse.listOf(entry.balance()),
                     entry.balanceQuantity(), entry.balanceAmount().amountInYen());

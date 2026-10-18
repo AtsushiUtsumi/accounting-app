@@ -1,4 +1,4 @@
-package com.example.accountingapp.presentation.master;
+package com.example.accountingapp.presentation.controller.master;
 
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.GrantedAuthority;
@@ -19,16 +19,20 @@ public class MeController {
     }
 
     public record MeResponse(String name, List<String> roles) {
+
+        public static MeResponse of(Authentication authentication, RoleHierarchy roleHierarchy) {
+            List<String> roles = roleHierarchy.getReachableGrantedAuthorities(authentication.getAuthorities()).stream()
+                    .map(GrantedAuthority::getAuthority)
+                    .filter(authority -> authority.startsWith("ROLE_"))
+                    .map(authority -> authority.substring("ROLE_".length()))
+                    .sorted()
+                    .toList();
+            return new MeResponse(authentication.getName(), roles);
+        }
     }
 
     @GetMapping("/me")
     public MeResponse me(Authentication authentication) {
-        List<String> roles = roleHierarchy.getReachableGrantedAuthorities(authentication.getAuthorities()).stream()
-                .map(GrantedAuthority::getAuthority)
-                .filter(authority -> authority.startsWith("ROLE_"))
-                .map(authority -> authority.substring("ROLE_".length()))
-                .sorted()
-                .toList();
-        return new MeResponse(authentication.getName(), roles);
+        return MeResponse.of(authentication, roleHierarchy);
     }
 }

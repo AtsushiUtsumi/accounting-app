@@ -1,4 +1,4 @@
-package com.example.accountingapp.presentation.journal;
+package com.example.accountingapp.presentation.controller.journal;
 
 import com.example.accounting.model.journal.JournalId;
 import com.example.accounting.model.journal.JournalType;
@@ -7,6 +7,7 @@ import com.example.accountingapp.application.journal.CorrectJournalUseCase;
 import com.example.accountingapp.application.journal.PostJournalCommand;
 import com.example.accountingapp.application.journal.PostJournalUseCase;
 import com.example.accountingapp.application.statement.StatementQueryService;
+import com.example.accountingapp.presentation.JournalResponse;
 import com.example.accountingapp.presentation.JournalLineRequest;
 import com.example.accountingapp.presentation.Today;
 import jakarta.validation.Valid;

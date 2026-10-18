@@ -1,4 +1,4 @@
-package com.example.accountingapp.presentation.statement;
+package com.example.accountingapp.presentation.controller.statement;
 
 import com.example.accounting.model.account.Account;
 import com.example.accounting.model.account.Side;
@@ -41,6 +41,18 @@ public class StatementController {
     // ---- 試算表 ----
 
     public record TrialBalanceResponse(List<TrialBalanceRow> rows, long debitTotal, long creditTotal, boolean balanced) {
+
+        public static TrialBalanceResponse of(TrialBalance trialBalance) {
+            List<TrialBalanceRow> rows = trialBalance.rows().entrySet().stream()
+                    .sorted(Comparator.comparing(entry -> entry.getKey().code().value()))
+                    .map(entry -> new TrialBalanceRow(
+                            entry.getKey().code().value(), entry.getKey().name(),
+                            entry.getValue().debitTotal().amountInYen(), entry.getValue().creditTotal().amountInYen(),
+                            entry.getValue().netBalance(entry.getKey().type()).amountInYen()))
+                    .toList();
+            return new TrialBalanceResponse(rows, trialBalance.debitTotal().amountInYen(),
+                    trialBalance.creditTotal().amountInYen(), trialBalance.isBalanced());
+        }
     }
 
     public record TrialBalanceRow(String accountCode, String accountName, long debitTotal, long creditTotal,
@@ -51,16 +63,7 @@ public class StatementController {
     @GetMapping("/periods/{id}/trial-balance")
     public TrialBalanceResponse trialBalance(@PathVariable UUID id,
                                              @RequestParam(defaultValue = "false") boolean includeClosing) {
-        TrialBalance trialBalance = queries.trialBalance(id, includeClosing);
-        List<TrialBalanceRow> rows = trialBalance.rows().entrySet().stream()
-                .sorted(Comparator.comparing(entry -> entry.getKey().code().value()))
-                .map(entry -> new TrialBalanceRow(
-                        entry.getKey().code().value(), entry.getKey().name(),
-                        entry.getValue().debitTotal().amountInYen(), entry.getValue().creditTotal().amountInYen(),
-                        entry.getValue().netBalance(entry.getKey().type()).amountInYen()))
-                .toList();
-        return new TrialBalanceResponse(rows, trialBalance.debitTotal().amountInYen(),
-                trialBalance.creditTotal().amountInYen(), trialBalance.isBalanced());
+        return TrialBalanceResponse.of(queries.trialBalance(id, includeClosing));
     }
 
     // ---- B/S ----
@@ -72,14 +75,17 @@ public class StatementController {
     public record BalanceSheetResponse(List<AccountAmount> assets, List<AccountAmount> liabilities,
                                        List<AccountAmount> equity, long totalAssets, long totalLiabilities,
                                        long totalEquity, boolean balanced) {
+
+        public static BalanceSheetResponse of(BalanceSheet bs) {
+            return new BalanceSheetResponse(AccountAmount.listOf(bs.assets()), AccountAmount.listOf(bs.liabilities()),
+                    AccountAmount.listOf(bs.equity()), bs.totalAssets().amountInYen(),
+                    bs.totalLiabilities().amountInYen(), bs.totalEquity().amountInYen(), bs.isBalanced());
+        }
     }
 
     @GetMapping("/periods/{id}/balance-sheet")
     public BalanceSheetResponse balanceSheet(@PathVariable UUID id) {
-        BalanceSheet bs = queries.balanceSheet(id);
-        return new BalanceSheetResponse(AccountAmount.listOf(bs.assets()), AccountAmount.listOf(bs.liabilities()),
-                AccountAmount.listOf(bs.equity()), bs.totalAssets().amountInYen(),
-                bs.totalLiabilities().amountInYen(), bs.totalEquity().amountInYen(), bs.isBalanced());
+        return BalanceSheetResponse.of(queries.balanceSheet(id));
     }
 
     // ---- P/L ----
@@ -88,16 +94,19 @@ public class StatementController {
                                           long operatingIncome, long nonOperatingIncome, long nonOperatingExpense,
                                           long ordinaryIncome, long extraordinaryIncome, long extraordinaryLoss,
                                           long incomeBeforeIncomeTax, long incomeTaxExpense, long netIncome) {
+
+        public static IncomeStatementResponse of(IncomeStatement pl) {
+            return new IncomeStatementResponse(
+                    yen(pl.sales()), yen(pl.costOfSales()), yen(pl.grossProfit()), yen(pl.sgAndA()),
+                    yen(pl.operatingIncome()), yen(pl.nonOperatingIncome()), yen(pl.nonOperatingExpense()),
+                    yen(pl.ordinaryIncome()), yen(pl.extraordinaryIncome()), yen(pl.extraordinaryLoss()),
+                    yen(pl.incomeBeforeIncomeTax()), yen(pl.incomeTaxExpense()), yen(pl.netIncome()));
+        }
     }
 
     @GetMapping("/periods/{id}/income-statement")
     public IncomeStatementResponse incomeStatement(@PathVariable UUID id) {
-        IncomeStatement pl = queries.incomeStatement(id);
-        return new IncomeStatementResponse(
-                yen(pl.sales()), yen(pl.costOfSales()), yen(pl.grossProfit()), yen(pl.sgAndA()),
-                yen(pl.operatingIncome()), yen(pl.nonOperatingIncome()), yen(pl.nonOperatingExpense()),
-                yen(pl.ordinaryIncome()), yen(pl.extraordinaryIncome()), yen(pl.extraordinaryLoss()),
-                yen(pl.incomeBeforeIncomeTax()), yen(pl.incomeTaxExpense()), yen(pl.netIncome()));
+        return IncomeStatementResponse.of(queries.incomeStatement(id));
     }
 
     // ---- C/F ----
@@ -110,18 +119,21 @@ public class StatementController {
                                    long operatingActivities, long investingActivities, long financingActivities,
                                    long netChangeInCash, long cashAtBeginningOfPeriod, long cashAtEndOfPeriod,
                                    boolean reconciles, String note) {
+
+        public static CashFlowResponse of(CashFlowStatement cf) {
+            return new CashFlowResponse(
+                    yen(cf.netIncome()), yen(cf.depreciationAddBack()),
+                    AccountAmount.listOf(cf.operatingWorkingCapitalChanges()),
+                    yen(cf.operatingActivitiesCashFlow()), yen(cf.investingActivitiesCashFlow()),
+                    yen(cf.financingActivitiesCashFlow()), yen(cf.netChangeInCash()),
+                    yen(cf.cashAtBeginningOfPeriod()), yen(cf.cashAtEndOfPeriod()), cf.reconcilesToEndingCash(),
+                    CASH_FLOW_NOTE);
+        }
     }
 
     @GetMapping("/periods/{id}/cash-flow")
     public CashFlowResponse cashFlow(@PathVariable UUID id) {
-        CashFlowStatement cf = queries.cashFlow(id);
-        return new CashFlowResponse(
-                yen(cf.netIncome()), yen(cf.depreciationAddBack()),
-                AccountAmount.listOf(cf.operatingWorkingCapitalChanges()),
-                yen(cf.operatingActivitiesCashFlow()), yen(cf.investingActivitiesCashFlow()),
-                yen(cf.financingActivitiesCashFlow()), yen(cf.netChangeInCash()),
-                yen(cf.cashAtBeginningOfPeriod()), yen(cf.cashAtEndOfPeriod()), cf.reconcilesToEndingCash(),
-                CASH_FLOW_NOTE);
+        return CashFlowResponse.of(queries.cashFlow(id));
     }
 
     // ---- 株主資本等変動計算書 ----
@@ -130,26 +142,49 @@ public class StatementController {
                                         Map<EquityChangeReason, List<AccountAmount>> changesByReason,
                                         List<AccountAmount> closingBalances, long totalEquityAtBeginning,
                                         long totalEquityAtEnd, boolean reconciles) {
+
+        public static EquityChangesResponse of(StatementOfChangesInEquity sce) {
+            Map<EquityChangeReason, List<AccountAmount>> changes = new LinkedHashMap<>();
+            for (EquityChangeReason reason : EquityChangeReason.values()) {
+                Map<Account, Money> byAccount = sce.changesByReason().get(reason);
+                if (byAccount != null) {
+                    changes.put(reason, AccountAmount.listOf(byAccount));
+                }
+            }
+            return new EquityChangesResponse(AccountAmount.listOf(sce.openingBalances()), changes,
+                    AccountAmount.listOf(sce.closingBalances()), yen(sce.totalEquityAtBeginning()),
+                    yen(sce.totalEquityAtEnd()), sce.reconciles());
+        }
     }
 
     @GetMapping("/periods/{id}/equity-changes")
     public EquityChangesResponse equityChanges(@PathVariable UUID id) {
-        StatementOfChangesInEquity sce = queries.equityChanges(id);
-        Map<EquityChangeReason, List<AccountAmount>> changes = new LinkedHashMap<>();
-        for (EquityChangeReason reason : EquityChangeReason.values()) {
-            Map<Account, Money> byAccount = sce.changesByReason().get(reason);
-            if (byAccount != null) {
-                changes.put(reason, AccountAmount.listOf(byAccount));
-            }
-        }
-        return new EquityChangesResponse(AccountAmount.listOf(sce.openingBalances()), changes,
-                AccountAmount.listOf(sce.closingBalances()), yen(sce.totalEquityAtBeginning()),
-                yen(sce.totalEquityAtEnd()), sce.reconciles());
+        return EquityChangesResponse.of(queries.equityChanges(id));
     }
 
     // ---- 精算表 ----
 
     public record WorksheetResponse(List<WorksheetRow> rows, WorksheetTotals totals, long netIncome, boolean balanced) {
+
+        public static WorksheetResponse of(Worksheet ws) {
+            List<WorksheetRow> rows = ws.rows().entrySet().stream()
+                    .sorted(Comparator.comparing(entry -> entry.getKey().code().value()))
+                    .map(entry -> {
+                        Worksheet.Row r = entry.getValue();
+                        return new WorksheetRow(entry.getKey().code().value(), entry.getKey().name(),
+                                yen(r.trialBalanceDebit()), yen(r.trialBalanceCredit()),
+                                yen(r.adjustmentDebit()), yen(r.adjustmentCredit()),
+                                yen(r.incomeStatementDebit()), yen(r.incomeStatementCredit()),
+                                yen(r.balanceSheetDebit()), yen(r.balanceSheetCredit()));
+                    })
+                    .toList();
+            WorksheetTotals totals = new WorksheetTotals(
+                    yen(ws.trialBalanceDebitTotal()), yen(ws.trialBalanceCreditTotal()),
+                    yen(ws.adjustmentDebitTotal()), yen(ws.adjustmentCreditTotal()),
+                    yen(ws.incomeStatementDebitTotal()), yen(ws.incomeStatementCreditTotal()),
+                    yen(ws.balanceSheetDebitTotal()), yen(ws.balanceSheetCreditTotal()));
+            return new WorksheetResponse(rows, totals, yen(ws.netIncome()), ws.isBalanced());
+        }
     }
 
     public record WorksheetRow(String accountCode, String accountName,
@@ -167,30 +202,24 @@ public class StatementController {
 
     @GetMapping("/periods/{id}/worksheet")
     public WorksheetResponse worksheet(@PathVariable UUID id) {
-        Worksheet ws = queries.worksheet(id);
-        List<WorksheetRow> rows = ws.rows().entrySet().stream()
-                .sorted(Comparator.comparing(entry -> entry.getKey().code().value()))
-                .map(entry -> {
-                    Worksheet.Row r = entry.getValue();
-                    return new WorksheetRow(entry.getKey().code().value(), entry.getKey().name(),
-                            yen(r.trialBalanceDebit()), yen(r.trialBalanceCredit()),
-                            yen(r.adjustmentDebit()), yen(r.adjustmentCredit()),
-                            yen(r.incomeStatementDebit()), yen(r.incomeStatementCredit()),
-                            yen(r.balanceSheetDebit()), yen(r.balanceSheetCredit()));
-                })
-                .toList();
-        WorksheetTotals totals = new WorksheetTotals(
-                yen(ws.trialBalanceDebitTotal()), yen(ws.trialBalanceCreditTotal()),
-                yen(ws.adjustmentDebitTotal()), yen(ws.adjustmentCreditTotal()),
-                yen(ws.incomeStatementDebitTotal()), yen(ws.incomeStatementCreditTotal()),
-                yen(ws.balanceSheetDebitTotal()), yen(ws.balanceSheetCreditTotal()));
-        return new WorksheetResponse(rows, totals, yen(ws.netIncome()), ws.isBalanced());
+        return WorksheetResponse.of(queries.worksheet(id));
     }
 
     // ---- 総勘定元帳 ----
 
     public record LedgerResponse(String accountCode, String accountName, List<LedgerEntry> entries,
                                  long debitTotal, long creditTotal, long balance) {
+
+        public static LedgerResponse of(StatementQueryService.LedgerView view) {
+            Ledger ledger = view.ledger();
+            List<LedgerEntry> entries = view.journals().stream()
+                    .flatMap(journal -> journal.lines().stream()
+                            .filter(line -> line.account().equals(ledger.account()))
+                            .map(line -> entryOf(journal, line)))
+                    .toList();
+            return new LedgerResponse(ledger.account().code().value(), ledger.account().name(), entries,
+                    yen(ledger.debitTotal()), yen(ledger.creditTotal()), yen(ledger.balance()));
+        }
     }
 
     /** 元帳の1行。日付・摘要・種類は仕訳から、金額はその科目の行から取る。 */
@@ -200,15 +229,7 @@ public class StatementController {
 
     @GetMapping("/accounts/{code}/ledger")
     public LedgerResponse ledger(@PathVariable String code, @RequestParam UUID periodId) {
-        StatementQueryService.LedgerView view = queries.ledger(code, periodId);
-        Ledger ledger = view.ledger();
-        List<LedgerEntry> entries = view.journals().stream()
-                .flatMap(journal -> journal.lines().stream()
-                        .filter(line -> line.account().equals(ledger.account()))
-                        .map(line -> entryOf(journal, line)))
-                .toList();
-        return new LedgerResponse(ledger.account().code().value(), ledger.account().name(), entries,
-                yen(ledger.debitTotal()), yen(ledger.creditTotal()), yen(ledger.balance()));
+        return LedgerResponse.of(queries.ledger(code, periodId));
     }
 
     private static LedgerEntry entryOf(Journal journal, JournalLine line) {

@@ -26,6 +26,9 @@ dependencies {
     implementation("org.springframework.boot:spring-boot-starter-jdbc")
     implementation("org.springframework.boot:spring-boot-starter-flyway")
     implementation("org.springframework.boot:spring-boot-starter-security")
+    // MCP サーバー(AI エージェントから API と同じ機能を使えるようにする)
+    implementation(platform("org.springframework.ai:spring-ai-bom:2.0.1"))
+    implementation("org.springframework.ai:spring-ai-starter-mcp-server-webmvc")
     implementation("org.flywaydb:flyway-database-postgresql")
     runtimeOnly("org.postgresql:postgresql")
 

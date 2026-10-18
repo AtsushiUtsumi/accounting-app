@@ -1,4 +1,4 @@
-package com.example.accountingapp.presentation.closing;
+package com.example.accountingapp.presentation.controller.closing;
 
 import com.example.accounting.service.ProvisionType;
 import com.example.accountingapp.application.closing.AdjustingEntriesCommand;
@@ -6,7 +6,7 @@ import com.example.accountingapp.application.closing.ClosePeriodUseCase;
 import com.example.accountingapp.application.closing.ReverseAccrualsUseCase;
 import com.example.accountingapp.application.closing.RunAdjustingEntriesUseCase;
 import com.example.accountingapp.presentation.IdsResponse;
-import com.example.accountingapp.presentation.journal.JournalResponse;
+import com.example.accountingapp.presentation.JournalResponse;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -60,7 +60,7 @@ public class ClosingController {
             boolean settleConsumptionTax,
             boolean accrualsConfirmed) {
 
-        AdjustingEntriesCommand toCommand() {
+        public AdjustingEntriesCommand toCommand() {
             return new AdjustingEntriesCommand(
                     reclassifyBankOverdraft, checkingAccountCode, inventoryMethod, beginningInventory, endingInventory,
                     inventoryCounts == null ? null : inventoryCounts.stream().map(c ->

@@ -1,4 +1,4 @@
-package com.example.accountingapp.presentation.asset;
+package com.example.accountingapp.presentation.controller.asset;
 
 import com.example.accounting.model.asset.FixedAsset;
 import com.example.accounting.model.asset.IntangibleAsset;
@@ -69,7 +69,7 @@ public class AssetController {
                                      long residualValue, DepreciationSettings depreciation,
                                      long accumulatedDepreciation, long bookValue, LocalDate disposedOn) {
 
-        static FixedAssetResponse of(FixedAssetUseCase.FixedAssetView view) {
+        public static FixedAssetResponse of(FixedAssetUseCase.FixedAssetView view) {
             FixedAsset a = view.asset();
             return new FixedAssetResponse(a.id().value(), a.name(), a.assetAccount().code().value(),
                     a.accumulatedDepreciationAccount().code().value(), a.depreciationExpenseAccount().code().value(),
@@ -168,6 +168,13 @@ public class AssetController {
     public record IntangibleAssetResponse(UUID id, String name, String assetAccountCode,
                                           String amortizationExpenseAccountCode, long acquisitionCost,
                                           LocalDate acquisitionDate, int usefulLifeYears, long bookValue) {
+
+        public static IntangibleAssetResponse of(IntangibleAssetUseCase.IntangibleAssetView view) {
+            IntangibleAsset a = view.asset();
+            return new IntangibleAssetResponse(a.id().value(), a.name(), a.assetAccount().code().value(),
+                    a.amortizationExpenseAccount().code().value(), a.acquisitionCost().amountInYen(),
+                    a.acquisitionDate(), a.usefulLifeYears(), view.bookValue().amountInYen());
+        }
     }
 
     @PostMapping("/intangible-assets")
@@ -181,12 +188,7 @@ public class AssetController {
 
     @GetMapping("/intangible-assets")
     public List<IntangibleAssetResponse> intangibleAssets(@RequestParam Optional<UUID> periodId) {
-        return intangibleAssets.list(periodId).stream().map(view -> {
-            IntangibleAsset a = view.asset();
-            return new IntangibleAssetResponse(a.id().value(), a.name(), a.assetAccount().code().value(),
-                    a.amortizationExpenseAccount().code().value(), a.acquisitionCost().amountInYen(),
-                    a.acquisitionDate(), a.usefulLifeYears(), view.bookValue().amountInYen());
-        }).toList();
+        return intangibleAssets.list(periodId).stream().map(IntangibleAssetResponse::of).toList();
     }
 
     // ---- 満期保有目的債券 ----
@@ -198,6 +200,13 @@ public class AssetController {
 
     public record BondResponse(UUID id, String name, String bondAccountCode, long faceValue, long acquisitionCost,
                                LocalDate acquisitionDate, LocalDate maturityDate, long bookValue) {
+
+        public static BondResponse of(HeldToMaturityBondUseCase.BondView view) {
+            HeldToMaturityBond b = view.bond().bond();
+            return new BondResponse(view.bond().id(), view.bond().name(), b.bondAccount().code().value(),
+                    b.faceValue().amountInYen(), b.acquisitionCost().amountInYen(), b.acquisitionDate(),
+                    b.maturityDate(), view.bookValue().amountInYen());
+        }
     }
 
     @PostMapping("/held-to-maturity-bonds")
@@ -211,11 +220,6 @@ public class AssetController {
 
     @GetMapping("/held-to-maturity-bonds")
     public List<BondResponse> bonds(@RequestParam Optional<UUID> periodId) {
-        return bonds.list(periodId).stream().map(view -> {
-            HeldToMaturityBond b = view.bond().bond();
-            return new BondResponse(view.bond().id(), view.bond().name(), b.bondAccount().code().value(),
-                    b.faceValue().amountInYen(), b.acquisitionCost().amountInYen(), b.acquisitionDate(),
-                    b.maturityDate(), view.bookValue().amountInYen());
-        }).toList();
+        return bonds.list(periodId).stream().map(BondResponse::of).toList();
     }
 }

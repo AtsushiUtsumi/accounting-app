@@ -1,4 +1,4 @@
-package com.example.accountingapp.presentation.master;
+package com.example.accountingapp.presentation.controller.master;
 
 import com.example.accounting.model.account.Account;
 import com.example.accounting.model.account.AccountCategory;
@@ -36,7 +36,7 @@ public class AccountController {
     public record AccountResponse(String code, String name, AccountType type, AccountCategory category,
                                   Set<String> tags, boolean standard, boolean active, boolean used) {
 
-        static AccountResponse of(Account account, boolean used) {
+        public static AccountResponse of(Account account, boolean used) {
             return new AccountResponse(account.code().value(), account.name(), account.type(), account.category(),
                     account.tags().stream().map(AccountTag::value).collect(java.util.stream.Collectors.toSet()),
                     account.standard(), account.active(), used);
