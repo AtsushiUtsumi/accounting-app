@@ -80,7 +80,17 @@ curl -u bookkeeper:bookkeeper -H 'Content-Type: application/json' \
 REST API で公開している機能は、すべて MCP のツールとしても `/mcp`(Streamable HTTP、ステートレス)で公開している
 (`presentation.mcp`。`presentation.controller` と同じ並び)。認証は REST と同じ HTTP Basic で、ツールごとに REST と同じロールが必要になる。
 
-Claude Code から接続する例(承認者として。Basic の値は `user:password` を Base64 にしたもの):
+接続には、画面右上の「設定」で発行する **API キー**を使う(パスワードを AI エージェントに渡さずに済む)。
+キーは発行した直後に一度だけ表示され、DB にはハッシュだけを保存する。設定画面から、いつでも失効させられる。
+キーを使ったときの権限は、持ち主のその時点のロール(ロールを外されたり、アカウントを削除されたりすれば、キーでも使えなくなる)。
+キーは `/mcp` にだけ使え、REST API と画面には使えない。
+
+```
+claude mcp add --transport http accounting http://localhost/mcp \
+       --header "Authorization: Bearer acc_..."
+```
+
+HTTP Basic でも接続できる(Basic の値は `user:password` を Base64 にしたもの):
 
 ```
 claude mcp add --transport http accounting http://localhost/mcp \

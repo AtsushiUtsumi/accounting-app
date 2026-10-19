@@ -411,6 +411,7 @@ journalRepository.saveAll(PostedJournal.postAll(period, generated));   // 最後
 | GET | `/periods/{id}/consolidation` | 連結修正仕訳・連結精算表・連結 P/L・連結 B/S |
 | POST | `/signup` | サインアップ(認証不要。ロールなしで作る) |
 | GET/DELETE | `/me` | 自分の情報、自分のアカウントの削除 |
+| GET/POST/DELETE | `/me/api-keys`、`/me/api-keys/{id}` | MCP 用の API キーの一覧・発行・失効(自分のもの) |
 | GET/PATCH/DELETE | `/users`、`/users/{name}` | ユーザーの管理(承認者。ロールの付与・削除) |
 
 - 操作する会社は、リクエストヘッダー `X-Company-Id` で選ぶ(省略すれば既定の会社)。MCP では、すべてのツールに省略可能な引数 `companyId` がある。
@@ -434,6 +435,7 @@ journalRepository.saveAll(PostedJournal.postAll(period, generated));   // 最後
 - **日付**: 「今日」が必要なのは、入力が省略されたときの初期値だけ。`Clock` Bean から取り、ドメインには `LocalDate` で渡す。
 - **認可**: 記帳者、承認者(決算整理・締め・再振替・会社の作成・連結の入力・ユーザーの管理)、閲覧者のロールを分ける(Spring Security)。会社ごとの権限は分けない。
 - **ユーザー**: 設定ファイルのユーザー(アプリからは変更・削除できない)と、サインアップして `app_user` に保存したユーザー(パスワードは bcrypt のハッシュ)。サインアップは誰でもできるが、**ロールなし**で作られ、承認者がロールを付けるまで `/me` しか使えない。アカウントは本人(`DELETE /me`)と承認者(`DELETE /users/{name}`)が削除できる。最後の承認者は削除もロールの変更もできない。サインアップと自分のアカウントの削除は、人が画面から行う操作なので MCP のツールにしない(`@NotExposedAsMcpTool`)。
+- **MCP 用の API キー**: ユーザーが設定画面で自分のキーを発行・失効させる(1人 20 個まで)。キーは 256 ビットの乱数に `acc_` を付けたもので、`api_key` には SHA-256 のハッシュと先頭の数文字だけを保存する。`/mcp` にだけ `Authorization: Bearer` で使え(`ApiKeyAuthenticationFilter`)、権限は持ち主のその時点のロール。ユーザーを削除するとキーも削除する。キーの管理は MCP のツールにしない(エージェントが自分でキーを増やせないように)。期限はない。
 - **監査**: `journal.created_at / created_by`(と作成したユースケース)に記録する。ドメインの `Journal` には含めない。
 - **マルチテナント**: 連結のため、全テーブルに `company_id` を足した(§5)。操作する会社は `CompanyContext` が決める: REST はヘッダー `X-Company-Id`、MCP はツールの引数 `companyId`(`CompanyScopedToolCallback` がすべてのツールに足す)、どちらも省略すれば既定の会社。リポジトリは `CompanyContext` の会社のデータだけを読み書きするので、ユースケースは会社を意識しない。ほかの会社のデータを読むのは連結だけで、`callAs` で一時的に切り替える。
 - **性能**: 照会のたびに「期の全仕訳をメモリに読み込んで計算する」。件数が問題になってから、読み取り用のキャッシュを検討する(保存した集計値は**キャッシュ**であって正本ではない、という扱いにする)。

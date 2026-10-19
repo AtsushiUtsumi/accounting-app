@@ -1,6 +1,7 @@
 package com.example.accountingapp.application.user;
 
 import com.example.accountingapp.application.OperationNotAllowedException;
+import com.example.accountingapp.application.port.ApiKeyRepository;
 import com.example.accountingapp.application.port.UserAccountRepository;
 import com.example.accountingapp.application.user.UserAccount.Role;
 import com.example.accountingapp.application.user.UserAccount.Source;
@@ -15,6 +16,7 @@ import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.mock;
 
 /** 最後の承認者を守るルール(承認者がいなくなると、だれもロールを付けられなくなる)。 */
 class UserAccountUseCaseTest {
@@ -44,7 +46,8 @@ class UserAccountUseCaseTest {
         }
     };
 
-    private final UserAccountUseCase useCase = new UserAccountUseCase(repository, () -> configured, raw -> "{test}" + raw);
+    private final UserAccountUseCase useCase = new UserAccountUseCase(repository, () -> configured, raw -> "{test}" + raw,
+            mock(ApiKeyRepository.class));
 
     @Test
     void theLastApproverCannotBeDeletedOrDemoted() {

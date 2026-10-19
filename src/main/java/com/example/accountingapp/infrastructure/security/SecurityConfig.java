@@ -3,6 +3,7 @@ package com.example.accountingapp.infrastructure.security;
 import com.example.accountingapp.application.port.ConfiguredUsers;
 import com.example.accountingapp.application.port.PasswordHasher;
 import com.example.accountingapp.application.port.UserAccountRepository;
+import com.example.accountingapp.application.user.ApiKeyUseCase;
 import com.example.accountingapp.application.user.UserAccount;
 import com.example.accountingapp.application.user.UserAccount.Role;
 import com.example.accountingapp.application.user.UserAccount.Source;
@@ -26,6 +27,7 @@ import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.crypto.factory.PasswordEncoderFactories;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.www.BasicAuthenticationFilter;
 
 import java.util.List;
 
@@ -35,7 +37,8 @@ import java.util.List;
  * 会社ごとの権限は分けない(どのユーザーも、すべての会社を同じロールで操作できる)。
  *
  * <p>MCP(AI エージェント向けの {@code /mcp})は1つの URL にすべての操作が来るため、URL では閲覧者以上であることだけを確かめ、
- * ツールごとのロールはツールのメソッドの {@code @PreAuthorize} で確かめる。
+ * ツールごとのロールはツールのメソッドの {@code @PreAuthorize} で確かめる。MCP は HTTP Basic のほか、
+ * ユーザーが設定画面で発行した API キー({@code Authorization: Bearer})でも認証できる({@link ApiKeyAuthenticationFilter})。
  *
  * <p>ユーザーは2種類: 設定ファイル({@code accounting.security.users})のユーザーと、サインアップして DB に保存したユーザー。
  * サインアップは誰でもできるが、ロールがないうちは自分の情報({@code /me})しか扱えない。承認者がロールを付ける。
@@ -52,15 +55,16 @@ public class SecurityConfig {
     public static final String APPROVER = "APPROVER";
 
     @Bean
-    SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+    SecurityFilterChain securityFilterChain(HttpSecurity http, ApiKeyUseCase apiKeys,
+                                            UserDetailsService userDetailsService) throws Exception {
         http
                 .authorizeHttpRequests(authorize -> authorize
                         // 画面(静的ファイル)は誰でも取得できる。データはすべて API 側で認可する
                         .requestMatchers(HttpMethod.GET, "/", "/index.html", "/app/**", "/favicon.ico").permitAll()
                         // サインアップは認証なしでできる(作られるユーザーにはロールがない)
                         .requestMatchers(HttpMethod.POST, "/signup").permitAll()
-                        // 自分の情報の照会と、自分のアカウントの削除は、ロールがなくてもできる
-                        .requestMatchers("/me").authenticated()
+                        // 自分の情報の照会、自分のアカウントの削除、MCP 用の API キーの発行は、ロールがなくてもできる
+                        .requestMatchers("/me", "/me/**").authenticated()
                         // ユーザーの管理(ロールの付与・削除)は承認者だけ
                         .requestMatchers("/users", "/users/**").hasRole(APPROVER)
                         // MCP はツールごとに @PreAuthorize で認可する
@@ -78,6 +82,9 @@ public class SecurityConfig {
                 // 画面からの呼び出し(X-Requested-With 付き)では、ブラウザの認証ダイアログを出さないよう
                 // WWW-Authenticate を付けずに 401 を返す。画面は自分のサインインフォームで認証情報を送る
                 .httpBasic(basic -> basic.authenticationEntryPoint(new ScreenAwareBasicEntryPoint()))
+                // MCP は API キー(Authorization: Bearer)でも認証できる。Bean にするとサーブレットのフィルターとしても
+                // 登録されてしまうため、ここで作る
+                .addFilterBefore(new ApiKeyAuthenticationFilter(apiKeys, userDetailsService), BasicAuthenticationFilter.class)
                 // REST API はセッションを使わず、リクエストごとに認証する(CSRF 対策のトークンも不要)
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .csrf(csrf -> csrf.disable());

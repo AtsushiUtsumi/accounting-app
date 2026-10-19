@@ -21,6 +21,7 @@ import com.example.accountingapp.application.port.CompanyRepository;
 import com.example.accountingapp.application.port.CompanyRepository.Company;
 import com.example.accountingapp.application.port.UserAccountRepository;
 import com.example.accountingapp.application.statement.StatementQueryService;
+import com.example.accountingapp.application.user.ApiKeyUseCase;
 import com.example.accountingapp.infrastructure.company.RequestCompanyContext;
 import com.example.accountingapp.infrastructure.security.SecurityConfig;
 import com.example.accountingapp.presentation.Today;
@@ -105,6 +106,9 @@ class McpToolsTest {
     /** 認証のユーザーの検索(SecurityConfig)が使う。テストは @WithMockUser で認証する。 */
     @MockitoBean
     UserAccountRepository userAccountRepository;
+    /** MCP の API キー認証(SecurityConfig)が使う。 */
+    @MockitoBean
+    ApiKeyUseCase apiKeyUseCase;
     @MockitoBean
     CompanyUseCase companyUseCase;
     @MockitoBean

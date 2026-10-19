@@ -66,7 +66,7 @@ const ROUTES = {
   '/periods': master.periods,
   '/companies': master.companies,
   '/users': users.users,
-  '/account': users.account,
+  '/settings': users.settings,
   '/journals/new': journals.newJournal,
   '/journals': journals.journalBook,
   '/journals/detail': journals.detail,
@@ -125,7 +125,7 @@ function renderUser() {
   userArea.append(
     h('span', { class: 'user-name' }, state.me.name),
     h('span', { class: 'badge badge-muted' }, state.me.roles.map((r) => LABELS.role[r]).join('・')),
-    h('a', { class: 'btn-secondary btn-small', href: '#/account' }, 'アカウント'),
+    h('a', { class: 'btn-secondary btn-small', href: '#/settings' }, '設定'),
     h('button', { class: 'btn-secondary btn-small', onclick: signOut }, 'サインアウト'));
 }
 

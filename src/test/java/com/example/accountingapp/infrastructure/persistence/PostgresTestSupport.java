@@ -38,7 +38,7 @@ abstract class PostgresTestSupport {
     @BeforeEach
     void truncateAllTables() {
         jdbc.sql("""
-                truncate table app_user, unrealized_profit, intercompany_transaction, intercompany_balance, subsidiary_equity,
+                truncate table api_key, app_user, unrealized_profit, intercompany_transaction, intercompany_balance, subsidiary_equity,
                     subsidiary, inventory_movement, held_to_maturity_bond, intangible_asset, fixed_asset_disposal,
                     fixed_asset, journal_line, journal, accounting_period, account_tag, account cascade
                 """).update();

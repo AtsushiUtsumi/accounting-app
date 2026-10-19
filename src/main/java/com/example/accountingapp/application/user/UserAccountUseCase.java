@@ -3,6 +3,7 @@ package com.example.accountingapp.application.user;
 import com.example.accountingapp.application.InvalidCommandException;
 import com.example.accountingapp.application.OperationNotAllowedException;
 import com.example.accountingapp.application.ResourceNotFoundException;
+import com.example.accountingapp.application.port.ApiKeyRepository;
 import com.example.accountingapp.application.port.ConfiguredUsers;
 import com.example.accountingapp.application.port.PasswordHasher;
 import com.example.accountingapp.application.port.UserAccountRepository;
@@ -25,6 +26,7 @@ import java.util.regex.Pattern;
  * <p>だれでもサインアップできるが、サインアップした直後のユーザーにはロールがなく、帳簿を見ることも記帳することもできない。
  * 承認者がロールを付ける。設定ファイルのユーザーはアプリからは変更・削除できない。
  * 承認者がいなくなるとロールを付けられなくなるため、最後の承認者は削除もロールの変更もできない。
+ * ユーザーを削除すると、そのユーザーの MCP 用の API キーも削除する。
  */
 @Service
 public class UserAccountUseCase {
@@ -37,12 +39,14 @@ public class UserAccountUseCase {
     private final UserAccountRepository repository;
     private final ConfiguredUsers configuredUsers;
     private final PasswordHasher passwordHasher;
+    private final ApiKeyRepository apiKeyRepository;
 
     public UserAccountUseCase(UserAccountRepository repository, ConfiguredUsers configuredUsers,
-                              PasswordHasher passwordHasher) {
+                              PasswordHasher passwordHasher, ApiKeyRepository apiKeyRepository) {
         this.repository = repository;
         this.configuredUsers = configuredUsers;
         this.passwordHasher = passwordHasher;
+        this.apiKeyRepository = apiKeyRepository;
     }
 
     @Transactional
@@ -94,6 +98,7 @@ public class UserAccountUseCase {
         if (user.role() == Role.APPROVER) {
             requireAnotherApprover(user);
         }
+        apiKeyRepository.deleteByUser(user.name());
         repository.delete(user.name());
     }
 

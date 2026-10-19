@@ -21,6 +21,7 @@ import com.example.accountingapp.application.journal.PostJournalCommand;
 import com.example.accountingapp.application.journal.PostJournalUseCase;
 import com.example.accountingapp.application.port.UserAccountRepository;
 import com.example.accountingapp.application.statement.StatementQueryService;
+import com.example.accountingapp.application.user.ApiKeyUseCase;
 import com.example.accountingapp.infrastructure.security.SecurityConfig;
 import com.example.accountingapp.presentation.Today;
 import com.example.accountingapp.presentation.controller.closing.ClosingController;
@@ -84,6 +85,9 @@ class ControllerTest {
     /** 認証のユーザーの検索(SecurityConfig)が使う。テストは @WithMockUser で認証する。 */
     @MockitoBean
     UserAccountRepository userAccountRepository;
+    /** MCP の API キー認証(SecurityConfig)が使う。 */
+    @MockitoBean
+    ApiKeyUseCase apiKeyUseCase;
 
     private static final String SALE = """
             {"description": "商品の掛け売上", "lines": [

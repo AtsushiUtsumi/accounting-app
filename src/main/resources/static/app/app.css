@@ -158,6 +158,8 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
 .btn-secondary { background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 6px 12px; }
 .btn-secondary:hover { background: var(--surface-2); }
 a.btn-secondary { text-decoration: none; display: inline-block; }
+.copy-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.copy-field { flex: 1; min-width: 0; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 12px; }
 .btn-danger { background: var(--error); color: #fff; border: none; border-radius: 6px; padding: 8px 18px; font-weight: 600; }
 .btn-small { padding: 2px 8px; font-size: 12px; }
 .btn-icon { background: none; border: none; color: var(--muted); font-size: 16px; padding: 2px 6px; }

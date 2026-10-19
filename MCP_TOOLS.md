@@ -1,7 +1,7 @@
 # MCP ツール一覧
 
 AI エージェント向けに `/mcp`(Streamable HTTP、ステートレス)で公開しているツールの一覧(74 個)。
-認証は REST と同じ HTTP Basic。ロールは上位が下位を含む(APPROVER ⊃ BOOKKEEPER ⊃ VIEWER)。
+認証は、設定画面で発行する API キー(`Authorization: Bearer acc_...`)か、REST と同じ HTTP Basic。ロールは上位が下位を含む(APPROVER ⊃ BOOKKEEPER ⊃ VIEWER)。
 
 帳簿は会社ごと。**どのツールにも省略可能な引数 `companyId`** があり、指定するとその会社を操作する
 (省略すれば既定の会社。会社の ID は `list_companies` で確認する)。
@@ -129,7 +129,7 @@ AI エージェント向けに `/mcp`(Streamable HTTP、ステートレス)で�
 
 ## ユーザー(`user`)
 
-サインアップ(`POST /signup`)と自分のアカウントの削除(`DELETE /me`)は、画面から人が行う操作なのでツールにしていない。
+サインアップ(`POST /signup`)、自分のアカウントの削除(`DELETE /me`)、API キーの発行・失効(`/me/api-keys`)は、画面から人が行う操作なのでツールにしていない。
 
 | ツール | 内容 | ロール |
 |---|---|---|

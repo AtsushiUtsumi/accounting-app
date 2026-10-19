@@ -1,7 +1,7 @@
-// ユーザー: 自分のアカウント(削除)、ユーザーの管理(承認者がロールを付ける・削除する)。
+// 設定(自分のアカウント、MCP 用の API キー、アカウントの削除)と、ユーザーの管理(承認者がロールを付ける・削除する)。
 
-import { h, get, patch, del, state, LABELS, clear } from '../core.js';
-import { page, card, note, alertBox, asyncArea, table, roleRequired } from '../components.js';
+import { h, get, post, patch, del, state, LABELS, clear } from '../core.js';
+import { page, card, note, alertBox, asyncArea, table, roleRequired, form } from '../components.js';
 
 const SOURCE_LABELS = { CONFIGURED: '設定ファイル', SIGNED_UP: 'サインアップ' };
 
@@ -28,12 +28,82 @@ export function deleteAccountCard(signOut) {
     message);
 }
 
-export function account(params, { signOut }) {
-  return page('アカウント',
-    card(null, h('dl', { class: 'kv' },
+export function settings(params, { signOut }) {
+  return page('設定',
+    card('アカウント', h('dl', { class: 'kv' },
       h('dt', {}, 'ユーザー名'), h('dd', {}, state.me.name),
       h('dt', {}, 'ロール'), h('dd', {}, state.me.roles.map((r) => LABELS.role[r]).join('・')))),
+    apiKeysCard(),
     deleteAccountCard(signOut));
+}
+
+// ---- MCP 用の API キー ----
+
+function apiKeysCard() {
+  const listArea = h('div');
+  const issuedArea = h('div');
+
+  async function reload() {
+    const keys = await get('/me/api-keys');
+    clear(listArea).append(table([
+      { label: '名前', key: 'name' },
+      { label: 'キー', render: (k) => h('code', {}, `${k.prefix}…`) },
+      { label: '発行日時', render: (k) => dateTime(k.createdAt) },
+      { label: '最後に使った日時', render: (k) => k.lastUsedAt ? dateTime(k.lastUsedAt) : h('span', { class: 'muted' }, '未使用') },
+      { label: '', render: (k) => h('button', {
+        type: 'button', class: 'btn-secondary btn-small',
+        onclick: async () => {
+          if (!confirm(`API キー「${k.name}」を失効させますか?このキーを使っている AI エージェントは接続できなくなります。`)) return;
+          await del(`/me/api-keys/${k.id}`);
+          clear(issuedArea);
+          await reload();
+        },
+      }, '失効させる') },
+    ], keys, { empty: 'まだ API キーはありません。' }));
+  }
+
+  function showIssued(issued) {
+    const command = `claude mcp add --transport http accounting ${location.origin}/mcp --header "Authorization: Bearer ${issued.token}"`;
+    clear(issuedArea).append(
+      alertBox('success', `API キー「${issued.key.name}」を発行しました。キーはこの画面でしか表示されません。いまコピーして保管してください。`),
+      copyField('API キー', issued.token),
+      copyField('Claude Code に登録するコマンド', command),
+      note('キーを使ったときの権限は、あなたのその時点のロールです。キーが漏れたら、すぐに失効させてください。'));
+  }
+
+  return card('MCP 用の API キー',
+    note('AI エージェント(MCP)から ', h('code', {}, '/mcp'), ' に接続するときに、パスワードの代わりに使うキーです。',
+      'リクエストヘッダー ', h('code', {}, 'Authorization: Bearer <キー>'), ' で送ります。REST API と画面には使えません。'),
+    asyncArea(async () => { await reload(); return listArea; }),
+    issuedArea,
+    form({
+      submitLabel: '発行する',
+      fields: [{ name: 'name', label: 'キーの名前(どこで使うか。例: 自分の PC の Claude Code)', required: true, maxlength: 100 }],
+      onSubmit: (v) => post('/me/api-keys', v),
+      result: async (v, issued) => { showIssued(issued); await reload(); return null; },
+    }));
+}
+
+function copyField(label, value) {
+  const input = h('input', { type: 'text', readonly: true, value, class: 'copy-field', onfocus: (e) => e.target.select() });
+  const status = h('span', { class: 'muted small' });
+  return h('div', { class: 'field field-wide' }, h('span', { class: 'field-label' }, label),
+    h('div', { class: 'copy-row' }, input, h('button', {
+      type: 'button', class: 'btn-secondary',
+      onclick: async () => {
+        try {
+          await navigator.clipboard.writeText(value);
+          status.textContent = 'コピーしました';
+        } catch {
+          input.select();
+          status.textContent = '選択しました。Ctrl+C でコピーしてください';
+        }
+      },
+    }, 'コピー'), status));
+}
+
+function dateTime(iso) {
+  return new Date(iso).toLocaleString('ja-JP', { dateStyle: 'short', timeStyle: 'short' });
 }
 
 export function users(params, { navigate }) {
