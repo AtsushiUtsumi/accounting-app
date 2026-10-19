@@ -7,6 +7,7 @@ import com.example.accounting.service.BadDebtService;
 import com.example.accounting.service.BondService;
 import com.example.accounting.service.CashOverShortService;
 import com.example.accounting.service.ClosingService;
+import com.example.accounting.service.ConsolidationService;
 import com.example.accounting.service.DividendService;
 import com.example.accounting.service.FinancialStatementFactory;
 import com.example.accounting.service.InstallmentPurchaseService;
@@ -108,5 +109,10 @@ public class DomainServiceConfig {
     @Bean
     TradingSecuritiesService tradingSecuritiesService() {
         return new TradingSecuritiesService();
+    }
+
+    @Bean
+    ConsolidationService consolidationService() {
+        return new ConsolidationService();
     }
 }

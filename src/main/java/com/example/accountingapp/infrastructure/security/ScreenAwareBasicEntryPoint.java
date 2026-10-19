@@ -11,7 +11,7 @@ import java.io.IOException;
 /**
  * 認証が必要なときの応答。curl などには通常どおり HTTP Basic のチャレンジ(WWW-Authenticate)を返す。
  * 画面からの呼び出し({@code X-Requested-With: XMLHttpRequest})には WWW-Authenticate を付けずに 401 だけを返し、
- * ブラウザの認証ダイアログが出ないようにする(画面は自分のログインフォームを出す)。
+ * ブラウザの認証ダイアログが出ないようにする(画面は自分のサインインフォームを出す)。
  */
 class ScreenAwareBasicEntryPoint implements AuthenticationEntryPoint {
 

@@ -3,6 +3,7 @@ package com.example.accountingapp.infrastructure.persistence;
 import com.example.accounting.model.inventory.InventoryMovement;
 import com.example.accounting.model.money.Money;
 import com.example.accountingapp.application.port.InventoryMovementRepository;
+import com.example.accountingapp.application.port.CompanyContext;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
 
@@ -16,9 +17,11 @@ import java.util.List;
 public class JdbcInventoryMovementRepository implements InventoryMovementRepository {
 
     private final JdbcClient jdbc;
+    private final CompanyContext companyContext;
 
-    public JdbcInventoryMovementRepository(JdbcClient jdbc) {
+    public JdbcInventoryMovementRepository(JdbcClient jdbc, CompanyContext companyContext) {
         this.jdbc = jdbc;
+        this.companyContext = companyContext;
     }
 
     @Override
@@ -28,9 +31,11 @@ public class JdbcInventoryMovementRepository implements InventoryMovementReposit
             case InventoryMovement.Issue issue -> null;
         };
         jdbc.sql("""
-                        insert into inventory_movement (item_code, kind, date, description, quantity, unit_cost)
-                        values (:item, :kind, :date, :description, :quantity, :unitCost)
+                        insert into inventory_movement (company_id, item_code, kind, date, description, quantity,
+                                                        unit_cost)
+                        values (:company, :item, :kind, :date, :description, :quantity, :unitCost)
                         """)
+                .param("company", companyContext.current().value())
                 .param("item", itemCode)
                 .param("kind", movement instanceof InventoryMovement.Receipt ? "RECEIPT" : "ISSUE")
                 .param("date", movement.date())
@@ -42,8 +47,8 @@ public class JdbcInventoryMovementRepository implements InventoryMovementReposit
 
     @Override
     public List<InventoryMovement> findByItem(String itemCode) {
-        return jdbc.sql("select * from inventory_movement where item_code = ? order by seq")
-                .param(itemCode)
+        return jdbc.sql("select * from inventory_movement where company_id = ? and item_code = ? order by seq")
+                .params(companyContext.current().value(), itemCode)
                 .query((rs, n) -> toMovement(rs))
                 .list();
     }

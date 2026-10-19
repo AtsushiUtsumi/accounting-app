@@ -5,6 +5,7 @@ import com.example.accounting.model.account.AccountCode;
 import com.example.accounting.model.money.Money;
 import com.example.accounting.model.securities.HeldToMaturityBond;
 import com.example.accountingapp.application.port.HeldToMaturityBondRepository;
+import com.example.accountingapp.application.port.CompanyContext;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
 
@@ -22,17 +23,23 @@ public class JdbcHeldToMaturityBondRepository implements HeldToMaturityBondRepos
 
     private final JdbcClient jdbc;
     private final JdbcAccountRepository accounts;
+    private final CompanyContext companyContext;
 
-    public JdbcHeldToMaturityBondRepository(JdbcClient jdbc, JdbcAccountRepository accounts) {
+    public JdbcHeldToMaturityBondRepository(JdbcClient jdbc, JdbcAccountRepository accounts, CompanyContext companyContext) {
         this.jdbc = jdbc;
         this.accounts = accounts;
+        this.companyContext = companyContext;
+    }
+
+    private UUID company() {
+        return companyContext.current().value();
     }
 
     @Override
     public Optional<RegisteredBond> findById(UUID id) {
         Map<AccountCode, Account> accountsByCode = accounts.findAllAsMap();
-        return jdbc.sql("select * from held_to_maturity_bond where id = ?")
-                .param(id)
+        return jdbc.sql("select * from held_to_maturity_bond where company_id = ? and id = ?")
+                .params(company(), id)
                 .query((rs, n) -> toBond(rs, accountsByCode))
                 .optional();
     }
@@ -40,7 +47,8 @@ public class JdbcHeldToMaturityBondRepository implements HeldToMaturityBondRepos
     @Override
     public List<RegisteredBond> findAll() {
         Map<AccountCode, Account> accountsByCode = accounts.findAllAsMap();
-        return jdbc.sql("select * from held_to_maturity_bond order by acquisition_date, name")
+        return jdbc.sql("select * from held_to_maturity_bond where company_id = ? order by acquisition_date, name")
+                .param(company())
                 .query((rs, n) -> toBond(rs, accountsByCode))
                 .list();
     }
@@ -49,9 +57,9 @@ public class JdbcHeldToMaturityBondRepository implements HeldToMaturityBondRepos
     public void save(RegisteredBond registered) {
         HeldToMaturityBond bond = registered.bond();
         jdbc.sql("""
-                        insert into held_to_maturity_bond (id, name, bond_account_code, face_value, acquisition_cost,
-                            acquisition_date, maturity_date)
-                        values (:id, :name, :account, :face, :cost, :acquired, :maturity)
+                        insert into held_to_maturity_bond (id, company_id, name, bond_account_code, face_value,
+                            acquisition_cost, acquisition_date, maturity_date)
+                        values (:id, :company, :name, :account, :face, :cost, :acquired, :maturity)
                         on conflict (id) do update set
                             name = excluded.name,
                             bond_account_code = excluded.bond_account_code,
@@ -61,6 +69,7 @@ public class JdbcHeldToMaturityBondRepository implements HeldToMaturityBondRepos
                             maturity_date = excluded.maturity_date
                         """)
                 .param("id", registered.id())
+                .param("company", company())
                 .param("name", registered.name())
                 .param("account", bond.bondAccount().code().value())
                 .param("face", bond.faceValue().amountInYen())

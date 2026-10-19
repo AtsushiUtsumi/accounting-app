@@ -14,7 +14,7 @@ import java.time.LocalDate;
 
 /**
  * 会社の初期化(CLAUDE.md §6.8)。標準科目を投入し、最初の会計期間(1年固定)を作る。
- * 最初は単一の会社だけを扱うため、期が1つでもあれば初期化済みとして拒否する。
+ * いま操作している会社が対象で、その会社に期が1つでもあれば初期化済みとして拒否する。
  */
 @Service
 public class CompanySetupUseCase {

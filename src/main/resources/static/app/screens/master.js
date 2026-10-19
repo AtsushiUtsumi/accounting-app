@@ -1,16 +1,17 @@
-// #2 会社の初期化、#3 勘定科目、#4 会計期間。
+// #2 会社の初期化、#3 勘定科目、#4 会計期間、会社の管理。
 
-import { h, get, post, patch, state, LABELS, options, loadAccounts, savePeriodId, clear } from '../core.js';
+import { h, get, post, patch, state, LABELS, options, loadAccounts, savePeriodId, clear, currentCompany } from '../core.js';
 import { page, card, form, table, note, alertBox, roleRequired, asyncArea } from '../components.js';
 
 // ---- #2 会社の初期化 ----
 
 export function setup(params, { refresh, navigate }) {
+  const company = currentCompany();
   if (state.periods && state.periods.length) {
-    return page('会社の初期化', alertBox('info', '会社は初期化済みです(初期化は一度しかできません)。'));
+    return page('会社の初期化', alertBox('info', `「${company ? company.name : ''}」は初期化済みです(初期化は会社ごとに一度しかできません)。`));
   }
   return page('会社の初期化',
-    note('標準科目を投入し、最初の会計期間(期首日から1年間)を作ります。初期化は一度しかできません。'),
+    note(`「${company ? company.name : ''}」に標準科目を投入し、最初の会計期間(期首日から1年間)を作ります。初期化は一度しかできません。`),
     card(null, form({
       role: 'APPROVER',
       submitLabel: '初期化する',
@@ -123,4 +124,50 @@ export function periods(params, { navigate }) {
     if (picker) picker.value = id;
     if (go) navigate('/');
   }
+}
+
+// ---- 会社 ----
+
+export function companies(params, { refresh, switchCompany }) {
+  const renameArea = h('div');
+
+  function rename(company) {
+    clear(renameArea).append(card(`会社名の変更: ${company.name}`, form({
+      role: 'APPROVER', submitLabel: '変更する',
+      fields: [{ name: 'name', label: '会社名', value: company.name, required: true, maxlength: 100 }],
+      onSubmit: (v) => patch(`/companies/${company.id}`, v),
+      result: async () => { await refresh(); clear(renameArea); return null; },
+    })));
+  }
+
+  return page('会社', asyncArea(async () => {
+    const list = await get('/companies');
+    return [
+      card('会社の一覧', table([
+        { label: '会社名', key: 'name' },
+        { label: 'ID', render: (c) => h('code', { class: 'small' }, c.id) },
+        { label: '', render: (c) => c.id === state.companyId
+          ? h('span', { class: 'badge badge-ok' }, '操作中')
+          : h('button', { type: 'button', class: 'btn-secondary btn-small', onclick: () => switchCompany(c.id) }, 'この会社に切り替える') },
+        { label: '', render: (c) => h('button', { type: 'button', class: 'btn-secondary btn-small', onclick: () => rename(c) }, '名前を変更') },
+      ], list), note('勘定科目・会計期間・仕訳・資産は会社ごとです。右上で操作する会社を切り替えられます。',
+        'AI エージェント(MCP)からは、各ツールの companyId に会社の ID を渡します。')),
+      renameArea,
+      card('会社の追加', roleRequired('APPROVER'),
+        note('子会社の帳簿をつけるときなどに使います。標準科目と最初の会計期間(期首日から1年間)も用意します。'),
+        form({
+          role: 'APPROVER', submitLabel: '追加する',
+          fields: [
+            { name: 'name', label: '会社名', required: true, maxlength: 100 },
+            { name: 'firstPeriodStart', label: '最初の期の期首日', type: 'date', required: true, value: `${new Date().getFullYear()}-04-01` },
+          ],
+          onSubmit: (v) => post('/companies', v),
+          result: async (v, created) => {
+            await refresh();
+            return h('div', {}, alertBox('success', `追加しました: ${created.company.name}(${created.firstPeriod.startDate} 〜 ${created.firstPeriod.endDate})`),
+              h('button', { type: 'button', class: 'btn-secondary', onclick: () => switchCompany(created.company.id) }, 'この会社に切り替える'));
+          },
+        })),
+    ];
+  }));
 }

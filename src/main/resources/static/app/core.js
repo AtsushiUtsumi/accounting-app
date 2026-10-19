@@ -1,13 +1,16 @@
-// 画面の共通処理: API 呼び出し、ログイン状態、DOM の組み立て、表示用の書式。
+// 画面の共通処理: API 呼び出し、サインイン状態、DOM の組み立て、表示用の書式。
 // 会計の計算はしない(金額・仕訳はすべてサーバー(ライブラリ)が決める)。
 
 const AUTH_KEY = 'accounting.auth';
 const PERIOD_KEY = 'accounting.periodId';
+const COMPANY_KEY = 'accounting.companyId';
 
 export const state = {
-  me: null,          // { name, roles }
-  accounts: null,    // 科目一覧(キャッシュ)
-  periods: null,     // 期の一覧(キャッシュ)
+  me: null,          // { name, roles, company }
+  companies: null,   // 会社の一覧(キャッシュ)
+  companyId: null,   // 操作している会社(API の X-Company-Id ヘッダーで送る)
+  accounts: null,    // 科目一覧(キャッシュ。会社ごと)
+  periods: null,     // 期の一覧(キャッシュ。会社ごと)
   periodId: null,    // 照会・記帳の対象として選んでいる期
 };
 
@@ -27,11 +30,18 @@ export function credentials() {
 export function setCredentials(user, pass) {
   storageSet(sessionStorage, AUTH_KEY, user == null ? null : JSON.stringify({ user, pass }));
 }
+// 期は会社ごとに覚える
 export function savedPeriodId() {
-  return storageGet(localStorage, PERIOD_KEY);
+  return storageGet(localStorage, `${PERIOD_KEY}.${state.companyId}`);
 }
 export function savePeriodId(id) {
-  storageSet(localStorage, PERIOD_KEY, id);
+  storageSet(localStorage, `${PERIOD_KEY}.${state.companyId}`, id);
+}
+export function savedCompanyId() {
+  return storageGet(localStorage, COMPANY_KEY);
+}
+export function saveCompanyId(id) {
+  storageSet(localStorage, COMPANY_KEY, id);
 }
 
 // ---- API ----
@@ -55,11 +65,12 @@ function basicAuth({ user, pass }) {
 export async function api(method, path, body, auth = credentials()) {
   const headers = { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' };
   if (auth) headers['Authorization'] = basicAuth(auth);
+  if (state.companyId) headers['X-Company-Id'] = state.companyId;
   if (body !== undefined) headers['Content-Type'] = 'application/json';
   const response = await fetch(path, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
   if (response.status === 401) {
     onUnauthorized();
-    throw new ApiError(401, 'ログインが必要です');
+    throw new ApiError(401, 'サインインが必要です');
   }
   const text = await response.text();
   const data = text ? safeJson(text) : null;
@@ -90,6 +101,7 @@ function describeError(status, detail) {
 export const get = (path) => api('GET', path);
 export const post = (path, body = {}) => api('POST', path, body);
 export const patch = (path, body) => api('PATCH', path, body);
+export const del = (path) => api('DELETE', path);
 
 // ---- ロール ----
 
@@ -98,6 +110,20 @@ export function hasRole(role) {
 }
 
 // ---- キャッシュ ----
+
+export async function loadCompanies(force = false) {
+  if (!state.companies || force) state.companies = await get('/companies');
+  return state.companies;
+}
+
+export function currentCompany() {
+  return state.companies ? state.companies.find((c) => c.id === state.companyId) || null : null;
+}
+
+export function companyName(id) {
+  const company = state.companies && state.companies.find((c) => c.id === id);
+  return company ? company.name : id;
+}
 
 export async function loadAccounts(force = false) {
   if (!state.accounts || force) state.accounts = await get('/accounts');
@@ -172,6 +198,7 @@ export const LABELS = {
   side: { DEBIT: '借方', CREDIT: '貸方' },
   journalType: {
     NORMAL: '通常', ADJUSTING: '決算整理', CLOSING: '損益振替', OPENING: '開始', REVERSING: '再振替', REVERSAL: '取消',
+    CONSOLIDATION: '連結修正',
   },
   accountType: { ASSET: '資産', LIABILITY: '負債', EQUITY: '純資産', REVENUE: '収益', EXPENSE: '費用' },
   accountCategory: {
@@ -181,6 +208,7 @@ export const LABELS = {
     NON_OPERATING_INCOME: '営業外収益', NON_OPERATING_EXPENSE: '営業外費用',
     EXTRAORDINARY_INCOME: '特別利益', EXTRAORDINARY_LOSS: '特別損失', INCOME_TAX_EXPENSE: '法人税等',
     PROFIT_AND_LOSS: '損益', SUSPENSE: '仮勘定',
+    NON_CONTROLLING_INTERESTS: '非支配株主持分', NON_CONTROLLING_INTERESTS_PROFIT: '非支配株主に帰属する当期純利益',
   },
   provisionType: {
     BONUSES: '賞与引当金', REPAIRS: '修繕引当金', PRODUCT_WARRANTIES: '商品保証引当金',

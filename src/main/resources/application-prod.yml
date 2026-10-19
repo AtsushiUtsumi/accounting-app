@@ -1,7 +1,7 @@
 # 本番用(コンテナでは SPRING_PROFILES_ACTIVE=prod)。
 # 開発用の初期ユーザー(application.yml)を本番に持ち込まないよう、ユーザーの一覧を空にする。
 # ユーザーは環境変数 ACCOUNTING_SECURITY_USERS_<番号>_NAME / _PASSWORD / _ROLE で与える
-# (compose.prod.yaml と .env.example を参照)。与えなければ誰もログインできない。
+# (compose.prod.yaml と .env.example を参照)。サインアップしたユーザーにロールを付けるには、承認者が1人は必要。
 accounting:
   security:
     users: []

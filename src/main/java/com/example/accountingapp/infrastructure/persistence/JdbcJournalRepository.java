@@ -14,6 +14,7 @@ import com.example.accounting.model.period.AccountingPeriod;
 import com.example.accounting.model.period.AccountingPeriodId;
 import com.example.accountingapp.application.ConcurrencyConflictException;
 import com.example.accountingapp.application.port.AuditContext;
+import com.example.accountingapp.application.port.CompanyContext;
 import com.example.accountingapp.application.port.CurrentUser;
 import com.example.accountingapp.application.port.JournalQuery;
 import org.springframework.dao.DuplicateKeyException;
@@ -41,19 +42,23 @@ import java.util.UUID;
  * <p>復元するときは、科目を1回で全件読み込んでから {@link JournalLine} を組み立て、{@link Journal#of} /
  * {@link Journal#reversalOf} を通して {@link PostedJournal#restore} で包む。DB から読んだ仕訳も、
  * ドメインの不変条件(貸借一致)で検証される。
+ *
+ * <p>仕訳は記帳先の期の会社のもの。読むときは {@link CompanyContext} の会社の仕訳だけを、その会社の科目表で組み立てる。
  */
 @Repository
 public class JdbcJournalRepository implements JournalRepository, JournalQuery {
 
     private final JdbcClient jdbc;
     private final JdbcAccountRepository accounts;
+    private final CompanyContext companyContext;
     private final CurrentUser currentUser;
     private final Clock clock;
 
-    public JdbcJournalRepository(JdbcClient jdbc, JdbcAccountRepository accounts, CurrentUser currentUser,
-                                 Clock clock) {
+    public JdbcJournalRepository(JdbcClient jdbc, JdbcAccountRepository accounts, CompanyContext companyContext,
+                                 CurrentUser currentUser, Clock clock) {
         this.jdbc = jdbc;
         this.accounts = accounts;
+        this.companyContext = companyContext;
         this.currentUser = currentUser;
         this.clock = clock;
     }
@@ -71,10 +76,10 @@ public class JdbcJournalRepository implements JournalRepository, JournalQuery {
     @Override
     @Transactional
     public void saveAll(List<PostedJournal> journals) {
-        Map<AccountingPeriodId, Long> versions = new HashMap<>();
+        Map<AccountingPeriodId, PeriodLock> locks = new HashMap<>();
         for (PostedJournal journal : journals) {
-            long stored = versions.computeIfAbsent(journal.periodId(), this::lockPeriodVersion);
-            if (stored != journal.periodVersion()) {
+            PeriodLock lock = locks.computeIfAbsent(journal.periodId(), this::lockPeriod);
+            if (lock.version() != journal.periodVersion()) {
                 throw new ConcurrencyConflictException(
                         "accounting period was changed after posting (closed?): " + journal.periodId().value());
             }
@@ -85,7 +90,7 @@ public class JdbcJournalRepository implements JournalRepository, JournalQuery {
         String useCase = AuditContext.currentUseCase();
         try {
             for (PostedJournal posted : journals) {
-                insert(posted, now, user, useCase);
+                insert(posted, locks.get(posted.periodId()).companyId(), now, user, useCase);
             }
         } catch (DuplicateKeyException e) {
             throw new ConcurrencyConflictException("journal already exists or is already reversed", e);
@@ -93,23 +98,28 @@ public class JdbcJournalRepository implements JournalRepository, JournalQuery {
     }
 
     /** 期の version を共有ロックで読む。締め(version の更新)と競合したら、どちらかが待つ。 */
-    private long lockPeriodVersion(AccountingPeriodId periodId) {
-        return jdbc.sql("select version from accounting_period where id = ? for share")
+    private PeriodLock lockPeriod(AccountingPeriodId periodId) {
+        return jdbc.sql("select version, company_id from accounting_period where id = ? for share")
                 .param(periodId.value())
-                .query(Long.class)
+                .query((rs, n) -> new PeriodLock(rs.getLong("version"), rs.getObject("company_id", UUID.class)))
                 .optional()
                 .orElseThrow(() -> new IllegalStateException("unknown accounting period: " + periodId.value()));
     }
 
-    private void insert(PostedJournal posted, OffsetDateTime now, String user, String useCase) {
+    /** 保存時の期の version と、期の会社(仕訳はその会社のものとして保存する)。 */
+    private record PeriodLock(long version, UUID companyId) {
+    }
+
+    private void insert(PostedJournal posted, UUID companyId, OffsetDateTime now, String user, String useCase) {
         Journal journal = posted.journal();
         jdbc.sql("""
-                        insert into journal (id, period_id, period_version, date, description, type, reversal_of,
-                                             created_at, created_by, created_by_use_case)
-                        values (:id, :periodId, :periodVersion, :date, :description, :type, :reversalOf,
-                                :createdAt, :createdBy, :useCase)
+                        insert into journal (id, company_id, period_id, period_version, date, description, type,
+                                             reversal_of, created_at, created_by, created_by_use_case)
+                        values (:id, :companyId, :periodId, :periodVersion, :date, :description, :type,
+                                :reversalOf, :createdAt, :createdBy, :useCase)
                         """)
                 .param("id", journal.id().value())
+                .param("companyId", companyId)
                 .param("periodId", posted.periodId().value())
                 .param("periodVersion", posted.periodVersion())
                 .param("date", journal.date())
@@ -123,11 +133,11 @@ public class JdbcJournalRepository implements JournalRepository, JournalQuery {
         int lineNo = 1;
         for (JournalLine line : journal.lines()) {
             jdbc.sql("""
-                            insert into journal_line (journal_id, line_no, account_code, side, amount)
-                            values (?, ?, ?, ?, ?)
+                            insert into journal_line (journal_id, line_no, company_id, account_code, side, amount)
+                            values (?, ?, ?, ?, ?, ?)
                             """)
-                    .params(journal.id().value(), lineNo++, line.account().code().value(), line.side().name(),
-                            line.amount().amountInYen())
+                    .params(journal.id().value(), lineNo++, companyId, line.account().code().value(),
+                            line.side().name(), line.amount().amountInYen())
                     .update();
         }
     }
@@ -143,10 +153,12 @@ public class JdbcJournalRepository implements JournalRepository, JournalQuery {
     }
 
     private List<PostedJournal> restore(String where, UUID value) {
+        UUID company = companyContext.current().value();
         Map<AccountCode, Account> accountsByCode = accounts.findAllAsMap();
         Map<UUID, JournalRow> rows = new LinkedHashMap<>();
-        jdbc.sql("select j.* from journal j " + where + " order by j.seq")
+        jdbc.sql("select j.* from journal j " + where + " and j.company_id = :company order by j.seq")
                 .param("value", value)
+                .param("company", company)
                 .query((rs, n) -> JournalRow.of(rs))
                 .list()
                 .forEach(row -> rows.put(row.id(), row));
@@ -155,8 +167,9 @@ public class JdbcJournalRepository implements JournalRepository, JournalQuery {
         }
         Map<UUID, List<JournalLine>> lines = new HashMap<>();
         jdbc.sql("select l.* from journal_line l join journal j on j.id = l.journal_id " + where
-                        + " order by l.journal_id, l.line_no")
+                        + " and j.company_id = :company order by l.journal_id, l.line_no")
                 .param("value", value)
+                .param("company", company)
                 .query(rs -> {
                     Account account = usableForRestore(accountsByCode.get(AccountCode.of(rs.getString("account_code"))));
                     lines.computeIfAbsent(rs.getObject("journal_id", UUID.class), id -> new ArrayList<>())
@@ -249,8 +262,8 @@ public class JdbcJournalRepository implements JournalRepository, JournalQuery {
 
     @Override
     public boolean isAccountUsed(AccountCode code) {
-        return jdbc.sql("select exists(select 1 from journal_line where account_code = ?)")
-                .param(code.value())
+        return jdbc.sql("select exists(select 1 from journal_line where company_id = ? and account_code = ?)")
+                .params(companyContext.current().value(), code.value())
                 .query(Boolean.class)
                 .single();
     }

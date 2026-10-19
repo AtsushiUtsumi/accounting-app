@@ -1,5 +1,12 @@
 package com.example.accountingapp.infrastructure.security;
 
+import com.example.accountingapp.application.port.ConfiguredUsers;
+import com.example.accountingapp.application.port.PasswordHasher;
+import com.example.accountingapp.application.port.UserAccountRepository;
+import com.example.accountingapp.application.user.ApiKeyUseCase;
+import com.example.accountingapp.application.user.UserAccount;
+import com.example.accountingapp.application.user.UserAccount.Role;
+import com.example.accountingapp.application.user.UserAccount.Source;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.context.properties.ConfigurationProperties;
@@ -9,26 +16,36 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
 import org.springframework.security.access.hierarchicalroles.RoleHierarchy;
 import org.springframework.security.access.hierarchicalroles.RoleHierarchyImpl;
+import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.userdetails.User;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
+import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.crypto.factory.PasswordEncoderFactories;
 import org.springframework.security.crypto.password.PasswordEncoder;
-import org.springframework.security.provisioning.InMemoryUserDetailsManager;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.www.BasicAuthenticationFilter;
 
 import java.util.List;
 
 /**
  * 認可(CLAUDE.md §9)。ロールは閲覧者(VIEWER)・記帳者(BOOKKEEPER)・承認者(APPROVER)の3つで、
- * 上位のロールは下位のロールの操作もできる。決算整理・締め・再振替・会社の初期化は承認者だけ。
+ * 上位のロールは下位のロールの操作もできる。決算整理・締め・再振替・会社の作成と初期化・連結の入力は承認者だけ。
+ * 会社ごとの権限は分けない(どのユーザーも、すべての会社を同じロールで操作できる)。
  *
- * <p>ユーザーは設定ファイル({@code accounting.security.users})から読み込む(最初は単一の会社の小さな運用を想定)。
+ * <p>MCP(AI エージェント向けの {@code /mcp})は1つの URL にすべての操作が来るため、URL では閲覧者以上であることだけを確かめ、
+ * ツールごとのロールはツールのメソッドの {@code @PreAuthorize} で確かめる。MCP は HTTP Basic のほか、
+ * ユーザーが設定画面で発行した API キー({@code Authorization: Bearer})でも認証できる({@link ApiKeyAuthenticationFilter})。
+ *
+ * <p>ユーザーは2種類: 設定ファイル({@code accounting.security.users})のユーザーと、サインアップして DB に保存したユーザー。
+ * サインアップは誰でもできるが、ロールがないうちは自分の情報({@code /me})しか扱えない。承認者がロールを付ける。
  */
 @Configuration(proxyBeanMethods = false)
 @EnableConfigurationProperties(SecurityConfig.UserProperties.class)
+@EnableMethodSecurity
 public class SecurityConfig {
 
     private static final Logger LOG = LoggerFactory.getLogger(SecurityConfig.class);
@@ -38,20 +55,36 @@ public class SecurityConfig {
     public static final String APPROVER = "APPROVER";
 
     @Bean
-    SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+    SecurityFilterChain securityFilterChain(HttpSecurity http, ApiKeyUseCase apiKeys,
+                                            UserDetailsService userDetailsService) throws Exception {
         http
                 .authorizeHttpRequests(authorize -> authorize
                         // 画面(静的ファイル)は誰でも取得できる。データはすべて API 側で認可する
                         .requestMatchers(HttpMethod.GET, "/", "/index.html", "/app/**", "/favicon.ico").permitAll()
+                        // サインアップは認証なしでできる(作られるユーザーにはロールがない)
+                        .requestMatchers(HttpMethod.POST, "/signup").permitAll()
+                        // 自分の情報の照会、自分のアカウントの削除、MCP 用の API キーの発行は、ロールがなくてもできる
+                        .requestMatchers("/me", "/me/**").authenticated()
+                        // ユーザーの管理(ロールの付与・削除)は承認者だけ
+                        .requestMatchers("/users", "/users/**").hasRole(APPROVER)
+                        // MCP はツールごとに @PreAuthorize で認可する
+                        .requestMatchers("/mcp").hasRole(VIEWER)
                         .requestMatchers(HttpMethod.GET, "/**").hasRole(VIEWER)
-                        .requestMatchers(HttpMethod.POST, "/company").hasRole(APPROVER)
+                        .requestMatchers(HttpMethod.POST, "/company", "/companies").hasRole(APPROVER)
+                        .requestMatchers(HttpMethod.PATCH, "/companies/*").hasRole(APPROVER)
+                        // 連結(子会社の登録と連結の資料)。照会は上の GET の規則で閲覧者以上
+                        .requestMatchers("/subsidiaries", "/subsidiaries/**", "/periods/*/consolidation/**")
+                        .hasRole(APPROVER)
                         .requestMatchers(HttpMethod.POST,
                                 "/periods/*/adjustments/preview", "/periods/*/adjustments",
                                 "/periods/*/close", "/periods/*/reversals").hasRole(APPROVER)
                         .anyRequest().hasRole(BOOKKEEPER))
                 // 画面からの呼び出し(X-Requested-With 付き)では、ブラウザの認証ダイアログを出さないよう
-                // WWW-Authenticate を付けずに 401 を返す。画面は自分のログインフォームで認証情報を送る
+                // WWW-Authenticate を付けずに 401 を返す。画面は自分のサインインフォームで認証情報を送る
                 .httpBasic(basic -> basic.authenticationEntryPoint(new ScreenAwareBasicEntryPoint()))
+                // MCP は API キー(Authorization: Bearer)でも認証できる。Bean にするとサーブレットのフィルターとしても
+                // 登録されてしまうため、ここで作る
+                .addFilterBefore(new ApiKeyAuthenticationFilter(apiKeys, userDetailsService), BasicAuthenticationFilter.class)
                 // REST API はセッションを使わず、リクエストごとに認証する(CSRF 対策のトークンも不要)
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .csrf(csrf -> csrf.disable());
@@ -72,14 +105,37 @@ public class SecurityConfig {
     }
 
     @Bean
-    UserDetailsService userDetailsService(UserProperties properties) {
-        List<UserDetails> users = properties.users().stream()
-                .map(user -> User.withUsername(user.name()).password(user.password()).roles(user.role()).build())
+    PasswordHasher passwordHasher(PasswordEncoder passwordEncoder) {
+        return passwordEncoder::encode;
+    }
+
+    @Bean
+    ConfiguredUsers configuredUsers(UserProperties properties) {
+        List<UserAccount> users = properties.users().stream()
+                .map(user -> new UserAccount(user.name(), user.password(), Role.valueOf(user.role()), Source.CONFIGURED))
                 .toList();
-        if (users.isEmpty()) {
-            LOG.warn("ユーザーが1人も設定されていないため、誰もログインできません(accounting.security.users)");
+        if (users.stream().noneMatch(user -> user.role() == Role.APPROVER)) {
+            LOG.warn("設定ファイルに承認者がいません(accounting.security.users)。サインアップしたユーザーにロールを付けられる人がいなくなります");
         }
-        return new InMemoryUserDetailsManager(users);
+        return () -> users;
+    }
+
+    /** 設定ファイルのユーザーを先に探し、なければサインアップしたユーザーを探す。ロールがなければ権限なしで認証する。 */
+    @Bean
+    UserDetailsService userDetailsService(ConfiguredUsers configuredUsers, UserAccountRepository userAccountRepository) {
+        return name -> configuredUsers.all().stream()
+                .filter(user -> user.name().equals(name))
+                .findFirst()
+                .or(() -> userAccountRepository.findByName(name))
+                .map(SecurityConfig::toUserDetails)
+                .orElseThrow(() -> new UsernameNotFoundException(name));
+    }
+
+    private static UserDetails toUserDetails(UserAccount user) {
+        return User.withUsername(user.name())
+                .password(user.passwordHash())
+                .authorities(user.role() == null ? List.of() : List.of(new SimpleGrantedAuthority("ROLE_" + user.role().name())))
+                .build();
     }
 
     /**

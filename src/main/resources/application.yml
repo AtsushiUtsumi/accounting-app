@@ -12,6 +12,31 @@ spring:
   mvc:
     problemdetails:
       enabled: true
+  ai:
+    mcp:
+      server:
+        # AI エージェント向けの MCP サーバー(エンドポイントは /mcp)。REST API と同じく HTTP Basic で認証し、
+        # セッションを持たない(STATELESS)。ツールは presentation.mcp にある
+        name: accounting-app
+        version: 1.0.0
+        protocol: STATELESS
+        # ツールは @Tool と ToolCallbackProvider で登録する(McpToolConfig)。@McpTool の走査は使わない
+        annotation-scanner:
+          enabled: false
+        instructions: |
+          日本の会計(複式簿記)のアプリケーションです。仕訳の記帳から決算・財務諸表の照会までを行えます。
+          - 金額はすべて円の整数、日付は yyyy-MM-dd で渡します。
+          - 帳簿(科目・会計期間・仕訳・資産)は会社ごとです。どのツールにも省略可能な companyId があり、
+            指定するとその会社を操作します(省略すると既定の会社)。会社の ID は list_companies で確認してください。
+          - 連結: 子会社も create_company で作って帳簿をつけ、親会社を companyId にして register_subsidiary で登録します。
+            債権債務・取引高・未実現利益を add_* で入力し、get_consolidated_statements で連結財務諸表を作ります(連結のルールは未検証)。
+          - 借方・貸方・金額の計算は会計ライブラリが行います。ツールには取引の事実(金額・日付・科目)だけを渡してください。
+          - 科目コードは list_accounts で、会計期間の ID は get_latest_period / list_periods で確認してから使ってください。
+          - 決算の流れ: 経過勘定・貯蔵品を post_journal(type: ADJUSTING)で記帳 → settle_cash_over_short
+            → preview_adjusting_entries で確認 → run_adjusting_entries → close_period → 次期で reverse_accruals。
+          - 記帳した仕訳は削除できません。誤りは correct_journal(赤黒訂正)で直します。
+          - 締め・決算整理など元に戻せない操作は、実行前に利用者に確認してください。
+          - エラーは先頭に [ACCOUNTING_RULE_VIOLATION] などのコードが付きます。[FORBIDDEN] はロールが足りないことを表します(who_am_i で確認できます)。
 
 accounting:
   security:
