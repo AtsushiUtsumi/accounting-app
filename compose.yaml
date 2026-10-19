@@ -1,6 +1,29 @@
-# 開発用の PostgreSQL。run.bat が起動する。
+# 開発用。
+# - PostgreSQL だけ起動する(アプリは gradlew bootRun でホストで動かす): run.bat
+# - アプリもコンテナで動かす(app サービス。プロファイル app のときだけ起動する): run-container.bat
 # 5432 番は既存の PostgreSQL と重なりやすいため、ホスト側は 15432 番にする。
 services:
+  app:
+    # run.bat の docker compose up では起動しない(bootRun とポートが重なるため)
+    profiles: [app]
+    # Dockerfile は build/libs/accounting-app.jar をコピーするだけ。先に gradlew bootJar を実行しておく
+    build: .
+    image: accounting-app:dev
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      # Dockerfile の既定は prod。開発では application.yml の開発用ユーザー(viewer / bookkeeper / approver)を使う
+      SPRING_PROFILES_ACTIVE: default
+      ACCOUNTING_PORT: "8080"
+      # コンテナ同士はサービス名でつながる(localhost:15432 ではない)
+      ACCOUNTING_DB_URL: jdbc:postgresql://postgres:5432/accounting
+      ACCOUNTING_DB_USER: accounting
+      ACCOUNTING_DB_PASSWORD: accounting
+    ports:
+      # コンテナの中は 8080 番(root 以外で動かすため)。外からは ACCOUNTING_PORT(既定 80)で受ける
+      - "${ACCOUNTING_PORT:-80}:8080"
+
   postgres:
     image: postgres:17-alpine
     environment:

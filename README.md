@@ -22,6 +22,12 @@ Windows では `run.bat` を実行する(Docker Desktop を起動しておくこ
 そのときは、そのプログラムを止めるか、`set ACCOUNTING_PORT=8080 & run.bat` のように別のポートで起動する。
 止めるときは Ctrl+C。PostgreSQL のコンテナは `docker compose down` で止める(データはボリュームに残る)。
 
+アプリもコンテナで動かすときは `run-container.bat` を実行する。jar を作り(`gradlew bootJar`)、
+`Dockerfile` からイメージ `accounting-app:dev` を手元で作って、PostgreSQL と一緒に起動する(`compose.yaml` の `app` サービス。
+プロファイル `app` のときだけ起動するので、`run.bat` では起動しない)。
+ポートと開発用ユーザーは `run.bat` と同じ(http://localhost/、`set ACCOUNTING_PORT=8080 & run-container.bat` で変更)。
+Ctrl+C でアプリと PostgreSQL の両方が止まる。DB のボリュームは `run.bat` と共通。
+
 起動したら、ブラウザで http://localhost/ を開く(ログイン画面が出る)。
 画面はアプリに同梱した静的ファイル(`src/main/resources/static`)で、データはすべて REST API から取得する。
 
