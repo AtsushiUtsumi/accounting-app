@@ -15,6 +15,9 @@ public interface PeriodLookup {
     /** 直前の期(期末日が、この期の期首日の前日である期)。 */
     Optional<AccountingPeriod> findPrevious(AccountingPeriod period);
 
+    /** その日が期末日である期。連結で、親会社と決算日が同じ子会社の期を探すのに使う。 */
+    Optional<AccountingPeriod> findEndingOn(LocalDate endDate);
+
     /** 期首日がもっとも新しい期。 */
     Optional<AccountingPeriod> findLatest();
 

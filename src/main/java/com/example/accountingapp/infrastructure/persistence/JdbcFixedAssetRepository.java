@@ -8,6 +8,7 @@ import com.example.accounting.model.asset.FixedAssetRepository;
 import com.example.accounting.model.money.Money;
 import com.example.accountingapp.application.asset.DepreciationSettings;
 import com.example.accountingapp.application.port.FixedAssetDisposalRegistry;
+import com.example.accountingapp.application.port.CompanyContext;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
 
@@ -29,17 +30,23 @@ public class JdbcFixedAssetRepository implements FixedAssetRepository, FixedAsse
 
     private final JdbcClient jdbc;
     private final JdbcAccountRepository accounts;
+    private final CompanyContext companyContext;
 
-    public JdbcFixedAssetRepository(JdbcClient jdbc, JdbcAccountRepository accounts) {
+    public JdbcFixedAssetRepository(JdbcClient jdbc, JdbcAccountRepository accounts, CompanyContext companyContext) {
         this.jdbc = jdbc;
         this.accounts = accounts;
+        this.companyContext = companyContext;
+    }
+
+    private UUID company() {
+        return companyContext.current().value();
     }
 
     @Override
     public Optional<FixedAsset> findById(FixedAssetId id) {
         Map<AccountCode, Account> accountsByCode = accounts.findAllAsMap();
-        return jdbc.sql("select * from fixed_asset where id = ?")
-                .param(id.value())
+        return jdbc.sql("select * from fixed_asset where company_id = ? and id = ?")
+                .params(company(), id.value())
                 .query((rs, n) -> toAsset(rs, accountsByCode))
                 .optional();
     }
@@ -47,7 +54,8 @@ public class JdbcFixedAssetRepository implements FixedAssetRepository, FixedAsse
     @Override
     public List<FixedAsset> findAll() {
         Map<AccountCode, Account> accountsByCode = accounts.findAllAsMap();
-        return jdbc.sql("select * from fixed_asset order by acquisition_date, name")
+        return jdbc.sql("select * from fixed_asset where company_id = ? order by acquisition_date, name")
+                .param(company())
                 .query((rs, n) -> toAsset(rs, accountsByCode))
                 .list();
     }
@@ -56,10 +64,10 @@ public class JdbcFixedAssetRepository implements FixedAssetRepository, FixedAsse
     public void save(FixedAsset asset) {
         DepreciationSettings settings = DepreciationSettings.of(asset.depreciationPolicy());
         jdbc.sql("""
-                        insert into fixed_asset (id, name, asset_account_code, accumulated_depreciation_code,
+                        insert into fixed_asset (id, company_id, name, asset_account_code, accumulated_depreciation_code,
                             depreciation_expense_code, acquisition_cost, acquisition_date, useful_life_years,
                             residual_value, policy_kind, declining_rate, total_estimated_usage, rounding)
-                        values (:id, :name, :asset, :accumulated, :expense, :cost, :acquired, :life,
+                        values (:id, :company, :name, :asset, :accumulated, :expense, :cost, :acquired, :life,
                             :residual, :kind, :rate, :usage, :rounding)
                         on conflict (id) do update set
                             name = excluded.name,
@@ -76,6 +84,7 @@ public class JdbcFixedAssetRepository implements FixedAssetRepository, FixedAsse
                             rounding = excluded.rounding
                         """)
                 .param("id", asset.id().value())
+                .param("company", company())
                 .param("name", asset.name())
                 .param("asset", asset.assetAccount().code().value())
                 .param("accumulated", asset.accumulatedDepreciationAccount().code().value())

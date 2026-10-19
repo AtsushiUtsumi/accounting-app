@@ -19,6 +19,7 @@ import com.example.accountingapp.application.closing.RunAdjustingEntriesUseCase;
 import com.example.accountingapp.application.journal.CorrectJournalUseCase;
 import com.example.accountingapp.application.journal.PostJournalCommand;
 import com.example.accountingapp.application.journal.PostJournalUseCase;
+import com.example.accountingapp.application.port.UserAccountRepository;
 import com.example.accountingapp.application.statement.StatementQueryService;
 import com.example.accountingapp.infrastructure.security.SecurityConfig;
 import com.example.accountingapp.presentation.Today;
@@ -80,6 +81,9 @@ class ControllerTest {
     ClosePeriodUseCase closePeriodUseCase;
     @MockitoBean
     ReverseAccrualsUseCase reverseAccrualsUseCase;
+    /** 認証のユーザーの検索(SecurityConfig)が使う。テストは @WithMockUser で認証する。 */
+    @MockitoBean
+    UserAccountRepository userAccountRepository;
 
     private static final String SALE = """
             {"description": "商品の掛け売上", "lines": [

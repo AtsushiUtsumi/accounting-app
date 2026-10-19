@@ -1,6 +1,7 @@
 package com.example.accountingapp.presentation.mcp;
 
 import com.example.accounting.exception.AccountingException;
+import com.example.accounting.model.consolidation.CompanyId;
 import com.example.accounting.model.account.Side;
 import com.example.accounting.model.journal.JournalId;
 import com.example.accounting.model.journal.JournalType;
@@ -14,7 +15,13 @@ import com.example.accountingapp.application.closing.RunAdjustingEntriesUseCase;
 import com.example.accountingapp.application.journal.CorrectJournalUseCase;
 import com.example.accountingapp.application.journal.PostJournalCommand;
 import com.example.accountingapp.application.journal.PostJournalUseCase;
+import com.example.accountingapp.application.master.CompanyUseCase;
+import com.example.accountingapp.application.port.CompanyContext;
+import com.example.accountingapp.application.port.CompanyRepository;
+import com.example.accountingapp.application.port.CompanyRepository.Company;
+import com.example.accountingapp.application.port.UserAccountRepository;
 import com.example.accountingapp.application.statement.StatementQueryService;
+import com.example.accountingapp.infrastructure.company.RequestCompanyContext;
 import com.example.accountingapp.infrastructure.security.SecurityConfig;
 import com.example.accountingapp.presentation.Today;
 import com.example.accountingapp.presentation.mcp.closing.ClosingTools;
@@ -49,6 +56,7 @@ import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -65,7 +73,7 @@ import static org.mockito.Mockito.verify;
 @WebMvcTest(useDefaultFilters = false)
 @ImportAutoConfiguration({McpServerJsonMapperAutoConfiguration.class, McpServerStatelessAutoConfiguration.class,
         StatelessToolCallbackConverterAutoConfiguration.class, McpServerStatelessWebMvcAutoConfiguration.class})
-@Import({SecurityConfig.class, Today.class, McpToolsTest.FixedClock.class, McpToolConfig.class,
+@Import({SecurityConfig.class, Today.class, McpToolsTest.FixedClock.class, McpToolConfig.class, RequestCompanyContext.class,
         JournalTools.class, ClosingTools.class, StatementTools.class, MeTools.class})
 class McpToolsTest {
 
@@ -94,6 +102,16 @@ class McpToolsTest {
     ClosePeriodUseCase closePeriodUseCase;
     @MockitoBean
     ReverseAccrualsUseCase reverseAccrualsUseCase;
+    /** 認証のユーザーの検索(SecurityConfig)が使う。テストは @WithMockUser で認証する。 */
+    @MockitoBean
+    UserAccountRepository userAccountRepository;
+    @MockitoBean
+    CompanyUseCase companyUseCase;
+    @MockitoBean
+    CompanyRepository companyRepository;
+
+    @Autowired
+    CompanyContext companyContext;
 
     private static final String SALE = """
             {"description": "商品の掛け売上", "lines": [
@@ -122,6 +140,11 @@ class McpToolsTest {
         return body.get("result");
     }
 
+    /** ツールの引数に、操作する会社(companyId)を足す。 */
+    private static String withCompany(String arguments, UUID companyId) {
+        return "{\"companyId\": \"" + companyId + "\", " + arguments.strip().substring(1);
+    }
+
     private static String text(JsonNode callToolResult) {
         return callToolResult.get("content").get(0).get("text").asString();
     }
@@ -147,6 +170,39 @@ class McpToolsTest {
         List<String> required = new ArrayList<>();
         postJournal.get("inputSchema").get("required").forEach(node -> required.add(node.asString()));
         assertThat(required).containsExactlyInAnyOrder("description", "lines");
+        // 操作する会社を選ぶ引数は、すべてのツールに省略可能な引数として足される
+        assertThat(tools.valueStream()).allSatisfy(tool ->
+                assertThat(tool.get("inputSchema").get("properties").has("companyId")).as(tool.get("name").asString()).isTrue());
+        assertThat(required).doesNotContain("companyId");
+    }
+
+    @Test
+    @WithMockUser(roles = SecurityConfig.BOOKKEEPER)
+    void companyId_runsTheToolAsThatCompany() {
+        CompanyId subsidiary = CompanyId.newId();
+        given(companyRepository.findById(subsidiary)).willReturn(Optional.of(new Company(subsidiary, "子会社")));
+        AtomicReference<CompanyId> companySeenByUseCase = new AtomicReference<>();
+        given(postJournalUseCase.post(any())).willAnswer(invocation -> {
+            companySeenByUseCase.set(companyContext.current());
+            return JournalId.newId();
+        });
+
+        JsonNode result = callTool("post_journal", withCompany(SALE, subsidiary.value()));
+
+        assertThat(isError(result)).as(text(result)).isFalse();
+        assertThat(companySeenByUseCase).hasValue(subsidiary);
+        // 呼び出しが終われば元の会社(既定の会社)に戻る
+        assertThat(companyContext.current()).isEqualTo(CompanyRepository.DEFAULT_COMPANY);
+    }
+
+    @Test
+    @WithMockUser(roles = SecurityConfig.BOOKKEEPER)
+    void unknownCompanyId_isNotFound() {
+        JsonNode result = callTool("post_journal", withCompany(SALE, UUID.randomUUID()));
+
+        assertThat(isError(result)).isTrue();
+        assertThat(text(result)).startsWith("[NOT_FOUND] company not found");
+        verify(postJournalUseCase, never()).post(any());
     }
 
     @Test
@@ -261,11 +317,13 @@ class McpToolsTest {
     @Test
     @WithMockUser(username = "tanaka", roles = SecurityConfig.BOOKKEEPER)
     void whoAmI_returnsTheReachableRoles() {
+        given(companyUseCase.current()).willReturn(new Company(CompanyRepository.DEFAULT_COMPANY, "既定の会社"));
         JsonNode body = JSON.readTree(text(callTool("who_am_i", "{}")));
 
         assertThat(body.get("name").asString()).isEqualTo("tanaka");
         List<String> roles = new ArrayList<>();
         body.get("roles").forEach(role -> roles.add(role.asString()));
         assertThat(roles).containsExactly("BOOKKEEPER", "VIEWER");
+        assertThat(body.get("company").get("name").asString()).isEqualTo("既定の会社");
     }
 }

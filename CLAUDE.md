@@ -43,9 +43,9 @@ accounting-app/              ← 新規
 com.example.accountingapp
  ├─ presentation          REST と MCP で共有する DTO(JournalResponse など)、Today
  │   ├─ controller        REST コントローラ、リクエスト/レスポンス DTO、例外ハンドラ
- │   │   ├─ journal / transaction / closing / statement / master / asset / inventory
+ │   │   ├─ journal / transaction / closing / statement / master / asset / inventory / consolidation
  │   └─ mcp               AI エージェント向けの MCP ツール(/mcp)。controller と同じ並びで、全エンドポイントに対応するツールを置く
- │       ├─ journal / transaction / closing / statement / master / asset / inventory
+ │       ├─ journal / transaction / closing / statement / master / asset / inventory / consolidation
  ├─ application           ユースケース(@Service, @Transactional)とコマンド/結果の型
  │   ├─ port              アプリ都合で追加する検索・保存のインターフェース(§4.2)
  │   ├─ journal           PostJournalUseCase, CorrectJournalUseCase
@@ -54,9 +54,11 @@ com.example.accountingapp
  │   ├─ inventory         InventoryUseCase(商品有高帳・売上原価対立法)
  │   ├─ closing           RunAdjustingEntriesUseCase, ClosePeriodUseCase, ReverseAccrualsUseCase
  │   ├─ statement         StatementQueryService(読み取り専用)
- │   └─ master            AccountManagementUseCase, CompanySetupUseCase
+ │   ├─ consolidation     ConsolidationUseCase(子会社・連結の資料・連結財務諸表。§6.9)
+ │   └─ master            AccountManagementUseCase, CompanySetupUseCase, CompanyUseCase
  ├─ infrastructure
  │   ├─ persistence       Jdbc*Repository(ライブラリと §4.2 のインターフェースの実装)、行 ↔ ドメインの変換
+ │   ├─ company           RequestCompanyContext(操作する会社。§9)
  │   └─ config            DomainServiceConfig(ドメインサービスの Bean 登録)、ClockConfig
  └─ AccountingApplication
 ```
@@ -133,11 +135,15 @@ interface FixedAssetRepository {
 
 | インターフェース | メソッド(案) | 用途 |
 |---|---|---|
-| `PeriodLookup` | `findContaining(LocalDate)`、`findPrevious(AccountingPeriod)`、`findLatest()` | 記帳先の期を日付で探す、C/F・再振替で前期を探す |
+| `PeriodLookup` | `findContaining(LocalDate)`、`findPrevious(AccountingPeriod)`、`findEndingOn(LocalDate)`、`findLatest()` | 記帳先の期を日付で探す、C/F・再振替で前期を探す、連結で子会社の同じ決算日の期を探す |
 | `JournalQuery` | `existsByPeriodAndType(period, JournalType)`、`isReversed(JournalId)`、`isAccountUsed(AccountCode)` | 決算整理の二重実行防止、二重取消の防止、使用済み科目の判定 |
 | `IntangibleAssetRepository` | `findById`、`findAll`、`save` | 無形固定資産(ライブラリにリポジトリがない) |
 | `HeldToMaturityBondRepository` | `findById`、`findAll`、`save` | 満期保有目的債券(ライブラリの record に ID がないため、アプリ側の ID と組で保存する) |
 | `InventoryMovementRepository` | `append`、`findByItem(itemCode)` | 商品有高帳の受入・払出の明細(仕訳とは別に保存する) |
+| `CompanyContext` | `current()`、`callAs(CompanyId, Supplier)` | 操作している会社(§9)。リポジトリはこの会社のデータだけを読み書きする |
+| `CompanyRepository` | `findById`、`findAll`、`save` | 会社(既定の会社は `DEFAULT_COMPANY`) |
+| `SubsidiaryRepository` | `findByParent`、`findParentOf`、`save`、`delete` | 子会社(ライブラリの `Subsidiary` は親会社を持たないため、親会社と組で保存する) |
+| `ConsolidationMaterialRepository` | `find*`、`add*`、`delete` | 連結の資料(債権債務・取引高・未実現利益)。親会社の期ごと。ライブラリの record に ID がないため、アプリ側の ID と組で保存する |
 
 ## 5. 永続化モデル
 
@@ -204,6 +210,12 @@ create table fixed_asset (
 );
 -- intangible_asset, held_to_maturity_bond, inventory_movement も同じ考え方で作る(帳簿価額は保存しない)
 ```
+
+上は会社が1つだったときの形(V1)。複数の会社を持つため(V2):
+- `company` テーブルを足し、**すべての帳簿のテーブルに `company_id`** を足した。既存のデータは既定の会社(`00000000-0000-0000-0000-000000000001`)のもの。
+- 科目の主キーは `(company_id, code)`。科目を参照する外部キーも `(company_id, 科目コード)` にした(ほかの会社の科目は使えない)。期首日の一意性も会社ごと。
+- 仕訳は、記帳先の期の会社のものとして保存する(`saveAll` が期を読むときに会社も読む)。
+- 連結: `subsidiary`・`subsidiary_equity`(支配獲得時の事実)と、親会社の期ごとの `intercompany_balance`・`intercompany_transaction`・`unrealized_profit`。**連結修正仕訳・連結財務諸表は保存しない**(毎回作り直す)。
 
 方針:
 - **journal / journal_line は INSERT だけ**。アプリの DB ユーザーから `UPDATE` / `DELETE` 権限を外すと、追記のみの原則を DB 側でも守れる。
@@ -348,11 +360,25 @@ journalRepository.saveAll(PostedJournal.postAll(period, generated));   // 最後
 ### 6.8 マスタ・資産
 
 - **科目**: 追加、名前の変更(`rename`)、タグの変更(`withTags`)、無効化(`deactivate`)。標準科目の保護はドメインが担う。使用済みかどうかは `JournalQuery.isAccountUsed` で判定し、削除 API は作らない。
-- **会社の初期化**: `StandardAccounts.ALL` を投入し、`AccountingPeriod.startingAt(期首日)` で最初の期を作る(会計期間は1年固定)。
+- **会社の初期化**: `StandardAccounts.ALL` を投入し、`AccountingPeriod.startingAt(期首日)` で最初の期を作る(会計期間は1年固定)。対象は操作している会社。
+- **会社**: 一覧、作成(`CompanyUseCase.create`。作った会社に `callAs` で切り替えて初期化まで行う)、名前の変更。削除はしない。
 - **固定資産**: 登録、償却方法の選択(定額法・定率法・生産高比例法)、売却(`disposalEntry`)、除却(`retirementEntry`)、廃棄(`abandonmentEntry`)、圧縮記帳(`compress`)。
   - 帳簿価額を勘定の残高から導出するため、**同じ種類の資産が複数あるなら資産ごとに科目が必要**(ライブラリの既知の制限)。登録時に科目を自動で作るか、利用者に選ばせるかは**未決**。
   - 圧縮記帳は、返された新しい `FixedAsset` と仕訳を**同じトランザクションで**保存する(古いインスタンスを使い続けると取得価額が合わない)。
 - **商品有高帳**: 受入・払出を `InventoryMovementRepository` に追記する。売上原価対立法の会社では、払出の結果(`InventoryLedgerEntry`)を `PerpetualInventoryService.recordSale` に渡して、売上と売上原価の仕訳を同時に作る。
+
+### 6.9 連結(ConsolidationUseCase)
+
+操作している会社を親会社とする。子会社も、このアプリで帳簿を持つ会社(§9 のマルチテナント)。ライブラリの連結は**未検証**(`UNVERIFIED_RULES.md` の 14-x)なので、API の結果に `unverified: true` を付け、画面に「検証中」を出す。
+
+1. **子会社の登録**: 支配獲得時の事実(支配獲得日・持分比率・子会社株式の取得原価・支配獲得日の資本・のれんの償却年数)を `Subsidiary` にして保存する。孫会社は扱わない(親会社が子会社である、または子会社が子会社を持つなら拒否)。
+2. **連結の資料**: 親会社の期ごとに、債権債務(`IntercompanyBalance`)・取引高(`IntercompanyTransaction`)・未実現利益(`UnrealizedProfit`)を保存する。資料に出てくる会社は、親会社かその子会社に限る。
+3. **連結財務諸表**(保存しない):
+   - 親会社の期の期末日までに支配を獲得した子会社を対象にする。
+   - 各子会社の帳簿から、**期末日が同じ期**を `callAs` で読む(なければ 404)。
+   - 各社の仕訳から損益振替(`CLOSING`)を除き(締めた期でも締め前の状態にする)、`IndividualStatements` にする。
+   - `ConsolidationService.consolidate` に渡して、連結修正仕訳・連結精算表・連結 P/L・連結 B/S を受け取る。
+- 各社の科目は**コードで同じ科目**とみなす(`Account` の同一性がコードのため)。同じコードで種類・区分が親会社と違う科目が子会社にあれば、合算できないので拒否する。
 
 ## 7. REST API(案)
 
@@ -377,6 +403,17 @@ journalRepository.saveAll(PostedJournal.postAll(period, generated));   // 最後
 | GET/POST/PATCH | `/accounts` | 科目マスタ(DELETE はない) |
 | GET/POST | `/fixed-assets`、`POST /fixed-assets/{id}/disposal` 他 | 固定資産 |
 | GET/POST | `/inventory/{itemCode}/movements` | 商品有高帳 |
+| GET/POST/PATCH | `/companies`、`/companies/{id}` | 会社(DELETE はない) |
+| GET/POST/DELETE | `/subsidiaries`、`/subsidiaries/{companyId}` | 子会社 |
+| GET | `/periods/{id}/consolidation/materials` | 連結の資料 |
+| POST | `/periods/{id}/consolidation/intercompany-balances` 他 | 連結の資料の追加(債権債務・取引高・未実現利益) |
+| DELETE | `/periods/{id}/consolidation/materials/{materialId}` | 連結の資料の削除 |
+| GET | `/periods/{id}/consolidation` | 連結修正仕訳・連結精算表・連結 P/L・連結 B/S |
+| POST | `/signup` | サインアップ(認証不要。ロールなしで作る) |
+| GET/DELETE | `/me` | 自分の情報、自分のアカウントの削除 |
+| GET/PATCH/DELETE | `/users`、`/users/{name}` | ユーザーの管理(承認者。ロールの付与・削除) |
+
+- 操作する会社は、リクエストヘッダー `X-Company-Id` で選ぶ(省略すれば既定の会社)。MCP では、すべてのツールに省略可能な引数 `companyId` がある。
 
 - 金額は JSON の整数(円)でやり取りする。`Money` を JSON にどう変換するかは presentation 層で決める(ライブラリはシリアライズに対応しない)。
 - レスポンス DTO は、ドメインの record から presentation 層で詰め替える。ドメインの型をそのまま JSON にしない。
@@ -395,9 +432,10 @@ journalRepository.saveAll(PostedJournal.postAll(period, generated));   // 最後
 ## 9. 横断的な関心事
 
 - **日付**: 「今日」が必要なのは、入力が省略されたときの初期値だけ。`Clock` Bean から取り、ドメインには `LocalDate` で渡す。
-- **認可**: 記帳者、承認者(決算整理・締め・再振替)、閲覧者のロールを分ける(Spring Security)。
+- **認可**: 記帳者、承認者(決算整理・締め・再振替・会社の作成・連結の入力・ユーザーの管理)、閲覧者のロールを分ける(Spring Security)。会社ごとの権限は分けない。
+- **ユーザー**: 設定ファイルのユーザー(アプリからは変更・削除できない)と、サインアップして `app_user` に保存したユーザー(パスワードは bcrypt のハッシュ)。サインアップは誰でもできるが、**ロールなし**で作られ、承認者がロールを付けるまで `/me` しか使えない。アカウントは本人(`DELETE /me`)と承認者(`DELETE /users/{name}`)が削除できる。最後の承認者は削除もロールの変更もできない。サインアップと自分のアカウントの削除は、人が画面から行う操作なので MCP のツールにしない(`@NotExposedAsMcpTool`)。
 - **監査**: `journal.created_at / created_by`(と作成したユースケース)に記録する。ドメインの `Journal` には含めない。
-- **マルチテナント**: 必要になったら全テーブルに `company_id` を足す。最初は単一の会社で作る。
+- **マルチテナント**: 連結のため、全テーブルに `company_id` を足した(§5)。操作する会社は `CompanyContext` が決める: REST はヘッダー `X-Company-Id`、MCP はツールの引数 `companyId`(`CompanyScopedToolCallback` がすべてのツールに足す)、どちらも省略すれば既定の会社。リポジトリは `CompanyContext` の会社のデータだけを読み書きするので、ユースケースは会社を意識しない。ほかの会社のデータを読むのは連結だけで、`callAs` で一時的に切り替える。
 - **性能**: 照会のたびに「期の全仕訳をメモリに読み込んで計算する」。件数が問題になってから、読み取り用のキャッシュを検討する(保存した集計値は**キャッシュ**であって正本ではない、という扱いにする)。
 - **未検証の会計ルール**: `UNVERIFIED_RULES.md` に載っているルールに依存する機能は、ライブラリ側で検証が済むまで画面に「検証中」と分かるようにするか、公開を遅らせる。
 
@@ -410,6 +448,7 @@ journalRepository.saveAll(PostedJournal.postAll(period, generated));   // 最後
 | `saveAll` | 途中の行で制約違反を起こさせ、1件も残らないことを確認する。期の version が進んだ後の保存が失敗することも確認する |
 | 締め | ドメインの自己検証(収益・費用の残高がゼロ、資産 = 負債 + 純資産、期末残高 = 次期の期首残高、当期純利益 = 繰越利益剰余金の増加額)を、**DB を通したあとでも**確認する |
 | 決算整理 | 手順の順序どおりに呼ばれることと、プレビューと確定の結果が一致することを確認する |
+| 連結 | DB を通して、会社ごとにデータが分かれること、アプリが組み立てた入力でライブラリを呼んだ結果が、同じ仕訳を直接ライブラリに渡した結果と一致することを確認する(連結のルール自体は未検証なので、金額の期待値は作らない) |
 | API | `@WebMvcTest` で DTO の変換と例外の HTTP 変換を確認 |
 
 ## 11. 実装の順序(案)
@@ -431,7 +470,7 @@ journalRepository.saveAll(PostedJournal.postAll(period, generated));   // 最後
 3. 再振替を締めのあとに自動実行するか、別の操作にするか
 4. 締め前の照会で、損益振替前の状態を見せるかどうか
 5. (決定済み)商品有高帳の入出庫明細は、仕訳とは別に保存する(ライブラリの `InventoryMovement` が仕訳と独立した入力のため)
-6. マルチテナント対応の要否
+6. (決定済み)マルチテナント対応: 連結のために対応した(§9)。会社ごとの権限は分けていない
 7. `DepreciationPolicy` の実装から償却率などを取り出すメソッドをライブラリに足すか(足さなければ、アプリが登録時の値を別に保存し続ける)
 8. 資産ごとの科目(減価償却累計額など)を、登録時にアプリが自動で作るか、利用者に選ばせるか
 9. C/F の資金に預金を含めるライブラリ側の対応を待つか、それまで C/F 画面を出さないか

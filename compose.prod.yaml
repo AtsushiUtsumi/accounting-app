@@ -17,7 +17,7 @@ services:
       ACCOUNTING_DB_URL: jdbc:postgresql://postgres:5432/accounting
       ACCOUNTING_DB_USER: accounting
       ACCOUNTING_DB_PASSWORD: ${ACCOUNTING_DB_PASSWORD:?.env に ACCOUNTING_DB_PASSWORD を設定してください}
-      # ログインユーザー(本番では application.yml の開発用ユーザーは使われない)
+      # サインインするユーザー(本番では application.yml の開発用ユーザーは使われない)
       ACCOUNTING_SECURITY_USERS_0_NAME: ${ACCOUNTING_VIEWER_NAME:-viewer}
       ACCOUNTING_SECURITY_USERS_0_PASSWORD: ${ACCOUNTING_VIEWER_PASSWORD:?.env に ACCOUNTING_VIEWER_PASSWORD を設定してください}
       ACCOUNTING_SECURITY_USERS_0_ROLE: VIEWER

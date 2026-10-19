@@ -6,6 +6,7 @@ import com.example.accounting.model.asset.FixedAssetId;
 import com.example.accounting.model.asset.IntangibleAsset;
 import com.example.accounting.model.money.Money;
 import com.example.accountingapp.application.port.IntangibleAssetRepository;
+import com.example.accountingapp.application.port.CompanyContext;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
 
@@ -23,17 +24,23 @@ public class JdbcIntangibleAssetRepository implements IntangibleAssetRepository 
 
     private final JdbcClient jdbc;
     private final JdbcAccountRepository accounts;
+    private final CompanyContext companyContext;
 
-    public JdbcIntangibleAssetRepository(JdbcClient jdbc, JdbcAccountRepository accounts) {
+    public JdbcIntangibleAssetRepository(JdbcClient jdbc, JdbcAccountRepository accounts, CompanyContext companyContext) {
         this.jdbc = jdbc;
         this.accounts = accounts;
+        this.companyContext = companyContext;
+    }
+
+    private UUID company() {
+        return companyContext.current().value();
     }
 
     @Override
     public Optional<IntangibleAsset> findById(FixedAssetId id) {
         Map<AccountCode, Account> accountsByCode = accounts.findAllAsMap();
-        return jdbc.sql("select * from intangible_asset where id = ?")
-                .param(id.value())
+        return jdbc.sql("select * from intangible_asset where company_id = ? and id = ?")
+                .params(company(), id.value())
                 .query((rs, n) -> toAsset(rs, accountsByCode))
                 .optional();
     }
@@ -41,7 +48,8 @@ public class JdbcIntangibleAssetRepository implements IntangibleAssetRepository 
     @Override
     public List<IntangibleAsset> findAll() {
         Map<AccountCode, Account> accountsByCode = accounts.findAllAsMap();
-        return jdbc.sql("select * from intangible_asset order by acquisition_date, name")
+        return jdbc.sql("select * from intangible_asset where company_id = ? order by acquisition_date, name")
+                .param(company())
                 .query((rs, n) -> toAsset(rs, accountsByCode))
                 .list();
     }
@@ -49,9 +57,9 @@ public class JdbcIntangibleAssetRepository implements IntangibleAssetRepository 
     @Override
     public void save(IntangibleAsset asset) {
         jdbc.sql("""
-                        insert into intangible_asset (id, name, asset_account_code, amortization_expense_code,
-                            acquisition_cost, acquisition_date, useful_life_years)
-                        values (:id, :name, :asset, :expense, :cost, :acquired, :life)
+                        insert into intangible_asset (id, company_id, name, asset_account_code,
+                            amortization_expense_code, acquisition_cost, acquisition_date, useful_life_years)
+                        values (:id, :company, :name, :asset, :expense, :cost, :acquired, :life)
                         on conflict (id) do update set
                             name = excluded.name,
                             asset_account_code = excluded.asset_account_code,
@@ -61,6 +69,7 @@ public class JdbcIntangibleAssetRepository implements IntangibleAssetRepository 
                             useful_life_years = excluded.useful_life_years
                         """)
                 .param("id", asset.id().value())
+                .param("company", company())
                 .param("name", asset.name())
                 .param("asset", asset.assetAccount().code().value())
                 .param("expense", asset.amortizationExpenseAccount().code().value())

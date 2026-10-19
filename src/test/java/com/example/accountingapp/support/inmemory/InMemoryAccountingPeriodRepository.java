@@ -45,6 +45,11 @@ public final class InMemoryAccountingPeriodRepository implements AccountingPerio
     }
 
     @Override
+    public Optional<AccountingPeriod> findEndingOn(LocalDate endDate) {
+        return periods.values().stream().filter(period -> period.endDate().equals(endDate)).findFirst();
+    }
+
+    @Override
     public Optional<AccountingPeriod> findLatest() {
         return periods.values().stream().max(Comparator.comparing(AccountingPeriod::startDate));
     }

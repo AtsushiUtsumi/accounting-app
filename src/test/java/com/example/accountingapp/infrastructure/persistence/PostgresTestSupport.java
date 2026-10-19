@@ -1,5 +1,6 @@
 package com.example.accountingapp.infrastructure.persistence;
 
+import com.example.accountingapp.application.port.CompanyRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -37,8 +38,11 @@ abstract class PostgresTestSupport {
     @BeforeEach
     void truncateAllTables() {
         jdbc.sql("""
-                truncate table inventory_movement, held_to_maturity_bond, intangible_asset, fixed_asset_disposal,
+                truncate table app_user, unrealized_profit, intercompany_transaction, intercompany_balance, subsidiary_equity,
+                    subsidiary, inventory_movement, held_to_maturity_bond, intangible_asset, fixed_asset_disposal,
                     fixed_asset, journal_line, journal, accounting_period, account_tag, account cascade
                 """).update();
+        // 既定の会社(マイグレーションで作る)だけを残す
+        jdbc.sql("delete from company where id <> ?").param(CompanyRepository.DEFAULT_COMPANY.value()).update();
     }
 }

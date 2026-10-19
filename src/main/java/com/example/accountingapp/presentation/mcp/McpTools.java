@@ -16,6 +16,6 @@ public interface McpTools {
     /** 記帳などの更新。 */
     String BOOKKEEPER = "hasRole('BOOKKEEPER')";
 
-    /** 会社の初期化・決算整理・締め・再振替。 */
+    /** 会社の作成と初期化・決算整理・締め・再振替・連結の入力。 */
     String APPROVER = "hasRole('APPROVER')";
 }

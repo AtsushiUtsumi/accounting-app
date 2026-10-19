@@ -1,5 +1,6 @@
 package com.example.accountingapp.presentation.mcp;
 
+import com.example.accountingapp.presentation.controller.NotExposedAsMcpTool;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.beans.factory.config.BeanDefinition;
@@ -24,6 +25,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * コントローラーで公開している機能が、すべて MCP のツールとしても公開されていること。
  * {@code presentation.controller.<機能>} と {@code presentation.mcp.<機能>} を同じ並びにしているので、機能ごとに
  * エンドポイントの数とツールの数を比べる(エンドポイントを足したらツールも足す)。
+ * {@link NotExposedAsMcpTool} を付けたエンドポイント(サインアップなど、人が画面から行う操作)は数えない。
  */
 class McpCoverageTest {
 
@@ -33,7 +35,8 @@ class McpCoverageTest {
     void everyControllerEndpointHasAnMcpTool() {
         Map<String, Integer> endpoints = countByFeature(PRESENTATION + ".controller",
                 new AnnotationTypeFilter(RestController.class),
-                method -> AnnotatedElementUtils.hasAnnotation(method, RequestMapping.class));
+                method -> AnnotatedElementUtils.hasAnnotation(method, RequestMapping.class)
+                        && !method.isAnnotationPresent(NotExposedAsMcpTool.class));
         Map<String, Integer> tools = countByFeature(PRESENTATION + ".mcp",
                 new AssignableTypeFilter(McpTools.class),
                 method -> method.isAnnotationPresent(Tool.class));

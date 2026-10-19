@@ -26,6 +26,10 @@ spring:
         instructions: |
           日本の会計(複式簿記)のアプリケーションです。仕訳の記帳から決算・財務諸表の照会までを行えます。
           - 金額はすべて円の整数、日付は yyyy-MM-dd で渡します。
+          - 帳簿(科目・会計期間・仕訳・資産)は会社ごとです。どのツールにも省略可能な companyId があり、
+            指定するとその会社を操作します(省略すると既定の会社)。会社の ID は list_companies で確認してください。
+          - 連結: 子会社も create_company で作って帳簿をつけ、親会社を companyId にして register_subsidiary で登録します。
+            債権債務・取引高・未実現利益を add_* で入力し、get_consolidated_statements で連結財務諸表を作ります(連結のルールは未検証)。
           - 借方・貸方・金額の計算は会計ライブラリが行います。ツールには取引の事実(金額・日付・科目)だけを渡してください。
           - 科目コードは list_accounts で、会計期間の ID は get_latest_period / list_periods で確認してから使ってください。
           - 決算の流れ: 経過勘定・貯蔵品を post_journal(type: ADJUSTING)で記帳 → settle_cash_over_short
